@@ -1,0 +1,6 @@
+# For Linux on IBM Z (s390x), where Streamlit cannot install (no pyarrow build).
+# pandas and numpy come from Ubuntu: sudo apt install python3-pandas python3-numpy
+# Use:  python3 -m venv --system-site-packages .venv && pip install -r requirements-server.txt
+dash>=3.0,<4
+plotly>=5.18
+pytest>=7.0

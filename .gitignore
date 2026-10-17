@@ -1,0 +1,16 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+output/
+.DS_Store
+# The real datathon files are large; keep them local.
+data/claims_and_billing.csv
+data/denials.csv
+
+# Never commit credentials or server logs
+*.pem
+*.key
+.env
+dash.log
+nohup.out

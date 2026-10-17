@@ -1,0 +1,8 @@
+update_id,payer,topic,summary,effective_date,severity,related_denial_codes,source
+SYN-U01,Cigna,Prior authorization,Illustrative update: an expanded set of outpatient services is described as needing prior authorization.,01-07-2025,High,CO197,SYNTHETIC DEMO
+SYN-U02,Aetna,Timely filing,Illustrative update: the claim filing window is described as being shortened.,01-08-2025,High,CO29,SYNTHETIC DEMO
+SYN-U03,Medicaid,Eligibility verification,Illustrative update: eligibility must be re-verified closer to the date of service.,15-06-2025,Medium,PR27|PR125,SYNTHETIC DEMO
+SYN-U04,UHC,Coordination of benefits,Illustrative update: stricter checks on other-coverage information before payment.,01-06-2025,Medium,CO22,SYNTHETIC DEMO
+SYN-U05,Humana,Medical necessity documentation,Illustrative update: additional clinical documentation is described as required for review.,20-06-2025,Medium,CO50|CO11,SYNTHETIC DEMO
+SYN-U06,BCBS,Claim submission requirements,Illustrative update: additional claim fields are described as required at submission.,15-07-2025,Low,CO16,SYNTHETIC DEMO
+SYN-U07,Medicare,Place of service edits,Illustrative update: new edits on place-of-service codes are described for a later date.,01-09-2025,Medium,CO58,SYNTHETIC DEMO
