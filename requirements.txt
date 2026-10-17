@@ -1,4 +1,8 @@
+# Everything needed to run both dashboards and all tests on a Mac or x86 Linux.
+# (On Linux on IBM Z / s390x, use requirements-server.txt instead: Streamlit cannot install there.)
 pandas>=2.0
 streamlit>=1.50
 altair>=5.0
+dash>=3.0,<4
+plotly>=5.18
 pytest>=7.0
