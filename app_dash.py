@@ -68,12 +68,25 @@ def money(x: float) -> str:
     return f"${x:,.0f}"
 
 
-def kpi(label: str, value: str) -> html.Div:
-    return html.Div([html.Div(label, className="kpi-label"), html.Div(value, className="kpi-value")], className="kpi")
+def kpi(label: str, value: str, sublabel: str = "", hero: bool = False) -> html.Div:
+    cls = "kpi hero" if hero else "kpi"
+    children = [html.Div(label, className="kpi-label"), html.Div(value, className="kpi-value")]
+    if sublabel:
+        children.append(html.Div(sublabel, className="kpi-sub"))
+    return html.Div(children, className=cls)
 
 
-def kpi_row(items: list[tuple[str, str]]) -> html.Div:
-    return html.Div([kpi(a, b) for a, b in items], className="kpi-row")
+def kpi_row(items) -> html.Div:
+    """Accept 2-tuples (label, value), 3-tuples (label, value, sublabel), or dicts."""
+    tiles = []
+    for item in items:
+        if isinstance(item, dict):
+            tiles.append(kpi(**item))
+        elif len(item) >= 3:
+            tiles.append(kpi(item[0], item[1], sublabel=item[2]))
+        else:
+            tiles.append(kpi(item[0], item[1]))
+    return html.Div(tiles, className="kpi-row")
 
 
 def page_header(title: str, desc: str = "", notice: html.Div | None = None) -> html.Div:
@@ -378,14 +391,15 @@ def overview_layout() -> html.Div:
             f"{asum['open_count']:,} open denials to work",
         ),
         kpi_row([
-            ("Insurance claims", f"{ds['insurance_claims']:,}"),
-            ("Total billed", money(ds["total_billed"])),
-            (f"Denied ({ds['denial_rate_pct']:.1f}% of claims)", f"{ds['denied_claims']:,}"),
-            ("Denied amount", money(ds["denied_amount"])),
-            ("Open denials to work", f"{asum['open_count']:,}"),
-            ("Open denied value (est.)", money(asum["open_value"])),
-            ("Recovered on appeal", money(asum["recovered_value"])),
-            ("Written off", money(asum["written_off_value"])),
+            ("Insurance claims", f"{ds['insurance_claims']:,}", "in dataset"),
+            ("Total billed", money(ds["total_billed"]), "across all claims"),
+            ("Denied", f"{ds['denied_claims']:,}", f"{ds['denial_rate_pct']:.1f}% of claims"),
+            ("Denied amount", money(ds["denied_amount"]), "total denied value"),
+            ("Open denials", f"{asum['open_count']:,}", "need human review"),
+            {"label": "Open denied value", "value": money(asum["open_value"]),
+             "sublabel": "estimated recoverable", "hero": True},
+            ("Recovered on appeal", money(asum["recovered_value"]), "historical wins"),
+            ("Written off", money(asum["written_off_value"]), "historical losses"),
         ]),
         html.Div(
             f"Of {asum['recovered_count'] + asum['written_off_count']:,} resolved appeals, "

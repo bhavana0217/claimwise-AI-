@@ -183,17 +183,29 @@ h2, h3, h4 { color: var(--text-primary); margin: 14px 0 6px 0; }
    KPI CARDS
    ============================================================ */
 .kpi-row {
-  display: grid; grid-template-columns: repeat(4,1fr); gap: 14px; margin: 10px 0 14px 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 12px;
+  margin: 10px 0 14px 0;
 }
-@media (max-width: 900px) { .kpi-row { grid-template-columns: repeat(2,1fr); } }
 .kpi {
   background: var(--bg-surface);
   border: 1px solid var(--border);
   border-radius: 12px; padding: 14px 18px;
   box-shadow: var(--shadow-card);
+  transition: box-shadow var(--ease);
 }
-.kpi-label { color: var(--text-muted); font-size: .82rem; font-weight: 600; }
-.kpi-value { color: var(--text-primary); font-size: 1.85rem; font-weight: 500; margin-top: 4px; }
+.kpi:hover { box-shadow: var(--shadow-raise); }
+.kpi-label { color: var(--text-muted); font-size: .8rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
+.kpi-value { color: var(--text-primary); font-size: 1.75rem; font-weight: 500; margin-top: 4px; font-variant-numeric: tabular-nums; }
+.kpi-sub   { color: var(--text-muted); font-size: .75rem; margin-top: 3px; }
+/* Hero tile — "Open denied value" */
+.kpi.hero {
+  border-left: 3px solid var(--teal-600);
+  background: var(--teal-100);
+}
+.kpi.hero .kpi-value { color: var(--teal-600); font-size: 2rem; font-weight: 600; }
+.kpi.hero .kpi-label { color: var(--teal-600); opacity: 0.85; }
 
 /* ============================================================
    CHART GRID
