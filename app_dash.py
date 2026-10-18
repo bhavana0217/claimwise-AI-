@@ -623,13 +623,135 @@ def notify_send(_, recipients, events, hp_min, ov_limit, ck_min, sim):
 
 
 # ------------------------------------------------------------------------------ AI investigator
+
+_TOOL_LABELS = {
+    # get_claim_details
+    "claim_id":            "Claim ID",
+    "insurance_provider":  "Payer",
+    "payment_method":      "Payment method",
+    "billed_amount":       "Billed amount",
+    "claim_billing_date":  "Billing date",
+    # get_denial_history
+    "has_denial":                "Has denial record",
+    "denial_reason_code":        "Denial reason code",
+    "denial_reason_description": "Denial reason",
+    "denied_amount":             "Denied amount",
+    "denial_date":               "Denial date",
+    "appeal_filed":              "Appeal filed",
+    "appeal_status":             "Appeal status",
+    "final_outcome":             "Final outcome",
+    # get_payer_rules / payer_stats
+    "payer":              "Payer",
+    "claims":             "Total claims",
+    "denied":             "Denied claims",
+    "denial_rate_pct":    "Denial rate",
+    "limitation":         "Limitation",
+    # get_similar_claims
+    "comparison":                 "Comparison basis",
+    "peer_count":                 "Peer claim count",
+    "peer_median_billed_amount":  "Peer median billed",
+    "selected_billed_amount":     "This claim billed",
+}
+
+_DOLLAR_KEYS = {"billed_amount", "denied_amount", "peer_median_billed_amount",
+                "selected_billed_amount"}
+_RATE_KEYS   = {"denial_rate_pct"}
+
+
+def _fmt_field(key: str, val) -> str:
+    """Format a single tool-result value for the two-column display table."""
+    if val is None:
+        return "\u2014"
+    if key in _DOLLAR_KEYS:
+        try:
+            return f"${float(val):,.2f}"
+        except (TypeError, ValueError):
+            pass
+    if key in _RATE_KEYS:
+        try:
+            return f"{float(val):.1f}%"
+        except (TypeError, ValueError):
+            pass
+    # ISO date strings: "2025-03-05" -> "Mar 5, 2025"
+    if isinstance(val, str) and len(val) == 10 and val[4] == "-" and val[7] == "-":
+        try:
+            import datetime
+            return datetime.date.fromisoformat(val).strftime("%b %-d, %Y")
+        except ValueError:
+            pass
+    if isinstance(val, bool):
+        return "Yes" if val else "No"
+    return str(val)
+
+
+def _tool_table(tool_result: dict) -> html.Table:
+    """Render a tool result dict as a clean two-column label/value table."""
+    rows = []
+    for key, val in tool_result.items():
+        if isinstance(val, (dict, list)):
+            continue  # nested objects handled separately
+        label = _TOOL_LABELS.get(key, key.replace("_", " ").capitalize())
+        rows.append(html.Tr([
+            html.Td(label, style={"fontWeight": "600", "width": "42%",
+                                  "padding": "5px 10px 5px 0", "verticalAlign": "top",
+                                  "color": "#374F66", "fontSize": "13px"}),
+            html.Td(_fmt_field(key, val), style={"padding": "5px 0",
+                                                  "fontSize": "13px", "color": "#0F2340"}),
+        ]))
+    # Render any nested list (e.g. top_denial_reasons) as sub-rows
+    for key, val in tool_result.items():
+        if isinstance(val, list) and val:
+            label = _TOOL_LABELS.get(key, key.replace("_", " ").capitalize())
+            sub_rows = []
+            for item in val:
+                if isinstance(item, dict):
+                    sub_rows.append(
+                        ", ".join(
+                            f"{_TOOL_LABELS.get(k, k)}: {_fmt_field(k, v)}"
+                            for k, v in item.items()
+                        )
+                    )
+                else:
+                    sub_rows.append(str(item))
+            rows.append(html.Tr([
+                html.Td(label, style={"fontWeight": "600", "width": "42%",
+                                      "padding": "5px 10px 5px 0", "verticalAlign": "top",
+                                      "color": "#374F66", "fontSize": "13px"}),
+                html.Td(html.Ul([html.Li(r, style={"fontSize": "13px"}) for r in sub_rows]),
+                        style={"padding": "5px 0"}),
+            ]))
+    return html.Table(rows, style={"width": "100%", "borderCollapse": "collapse"})
+
+
+def _trace_card(entry: dict) -> html.Div:
+    """Render one tool-trace entry as a labeled table with a raw-JSON toggle."""
+    tool_name = entry.get("tool", "unknown")
+    tool_result = entry.get("result", {})
+    raw_json = json.dumps(tool_result, indent=2, default=str)
+    return html.Div([
+        html.Div(tool_name, style={"fontWeight": "700", "fontSize": "13px",
+                                   "color": "#0A6B63", "marginBottom": "8px",
+                                   "textTransform": "uppercase", "letterSpacing": "0.05em"}),
+        _tool_table(tool_result),
+        html.Details([
+            html.Summary("View raw data",
+                         style={"cursor": "pointer", "fontSize": "12px",
+                                "color": "#536678", "marginTop": "8px"}),
+            html.Pre(raw_json,
+                     style={"fontSize": "11px", "background": "#F4F7FA",
+                            "padding": "8px", "borderRadius": "6px",
+                            "overflowX": "auto", "marginTop": "4px"}),
+        ]),
+    ], className="card", style={"marginBottom": "10px"})
+
+
 def investigator_layout() -> html.Div:
     claim_ids = sorted(QUEUE["claim_id"].dropna().unique())
     return html.Div([
         html.H3("AI Investigator (experimental)"),
         html.Div([
             html.B("Experimental"),
-            " — requires OPENAI_API_KEY. Results need human review.",
+            " \u2014 requires OPENAI_API_KEY. Results are AI-generated and require human review.",
         ], className="cw-demo"),
         html.Div("Select a claim from the appeal queue", className="field-label"),
         dcc.Dropdown(
@@ -638,12 +760,30 @@ def investigator_layout() -> html.Div:
             placeholder="Select a claim from the appeal queue...",
             clearable=True,
         ),
-        html.Div("Or type a claim ID directly", className="field-label", style={"marginTop": "8px"}),
+        html.Div("Or type a claim ID directly", className="field-label",
+                 style={"marginTop": "8px"}),
         dcc.Input(id="inv-claim-input", type="text", placeholder="Claim ID", debounce=True,
                   style={"width": "100%", "padding": "8px 12px", "borderRadius": "8px",
                          "border": "1px solid #DCE6EC", "fontSize": "14px"}),
-        html.Button("Investigate", id="inv-run-btn", className="btn", style={"marginTop": "12px"}),
-        dcc.Loading(html.Div(id="inv-result"), type="circle"),
+        html.Button("Investigate", id="inv-run-btn", className="btn",
+                    style={"marginTop": "12px"}),
+        dcc.Loading(
+            html.Div(id="inv-result"),
+            type="circle",
+            color="#0A6B63",
+            overlay_style={"visibility": "visible"},
+            custom_spinner=html.Div([
+                html.Div(style={"width": "28px", "height": "28px",
+                                "border": "3px solid #E0F2F0",
+                                "borderTop": "3px solid #0A6B63",
+                                "borderRadius": "50%",
+                                "animation": "spin 0.8s linear infinite",
+                                "margin": "0 auto 10px auto"}),
+                html.Div("Investigating claim\u2026",
+                         style={"color": "#374F66", "fontSize": "14px",
+                                "fontWeight": "600"}),
+            ], style={"textAlign": "center", "padding": "32px 0"}),
+        ),
     ])
 
 
@@ -657,7 +797,8 @@ def investigator_layout() -> html.Div:
 def run_investigation(n_clicks, dropdown_val, input_val):
     claim_id = (dropdown_val or input_val or "").strip()
     if not claim_id:
-        return html.Div("Please select or enter a claim ID before running.", className="cw-warn")
+        return html.Div("Please select or enter a claim ID before running.",
+                        className="cw-warn")
     from src.agent import investigate
     result = investigate(claim_id)
     status = result.get("status", "error")
@@ -667,27 +808,26 @@ def run_investigation(n_clicks, dropdown_val, input_val):
     if status == "error":
         return html.Div(["Error: ", summary], className="cw-warn")
     trace = result.get("tool_trace", [])
-    trace_items = []
-    for entry in trace:
-        tool_name = entry.get("tool", "unknown")
-        tool_result = entry.get("result", {})
-        trace_items.append(html.Div([
-            html.Div(tool_name, style={"fontWeight": "600", "marginBottom": "4px"}),
-            html.Pre(json.dumps(tool_result, indent=2, default=str),
-                     style={"fontSize": "12px", "background": "#F7FAFB", "padding": "8px",
-                            "borderRadius": "6px", "overflowX": "auto"}),
-        ], className="card", style={"marginBottom": "8px"}))
+    trace_cards = [_trace_card(e) for e in trace] if trace else [
+        html.Div("No tools were called.", className="caption"),
+    ]
     return html.Div([
-        html.Div(summary, className="cw-info"),
+        # Markdown renders headings, bullets, numbered lists from the agent
+        dcc.Markdown(summary, className="cw-info",
+                     style={"lineHeight": "1.65"}),
         html.Div(
-            "Human review required — this is AI-generated analysis, not a clinical determination.",
+            [html.B("Human review required \u2014 "),
+             "this is AI-generated analysis, not a clinical or billing determination."],
             className="cw-notice",
             style={"marginTop": "8px"},
         ),
         html.Details([
-            html.Summary("Tool trace (expand to see evidence gathered)",
-                         style={"cursor": "pointer", "fontWeight": "600", "padding": "6px 0"}),
-            html.Div(trace_items if trace_items else html.Div("No tools were called.", className="caption")),
+            html.Summary(
+                f"Tool trace \u2014 {len(trace)} tool call{'s' if len(trace) != 1 else ''}"
+                " (expand to see evidence gathered)",
+                style={"cursor": "pointer", "fontWeight": "600", "padding": "8px 0"},
+            ),
+            html.Div(trace_cards, style={"marginTop": "8px"}),
         ], className="card", style={"marginTop": "12px"}),
     ])
 

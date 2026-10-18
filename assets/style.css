@@ -44,3 +44,5 @@ input[type=text], input[type=number], textarea { border:1px solid #B8C7D1; borde
 .footer-note { color:#5B6B7B; font-size:.82rem; margin-top:14px; }
 .dash-spreadsheet-container .dash-spreadsheet-inner td, .dash-spreadsheet-container .dash-spreadsheet-inner th,
 .dash-spreadsheet-container .dash-spreadsheet-inner input { font-family: -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important; }
+@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { @keyframes spin { from { transform: none; } to { transform: none; } } }
