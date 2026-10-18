@@ -127,6 +127,8 @@ Then start the app in the same shell session. Without the key the app runs norma
 export COUVERTE_AGENT_MODEL=gpt-4o-mini   # default: gpt-4.1-mini
 ```
 
+**On IBM LinuxONE (s390x):** do **not** install the `openai` package. It pulls in packages that conflict with Ubuntu's system site-packages and breaks the AI Investigator instead of enabling it. The investigator includes a `requests`-based fallback that calls the OpenAI REST API directly — no `openai` package required. Set `OPENAI_API_KEY` as above and the fallback is used automatically.
+
 ---
 
 ## Run it

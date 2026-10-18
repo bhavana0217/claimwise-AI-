@@ -4,4 +4,6 @@
 dash>=3.0,<4
 plotly>=5.18
 pytest>=7.0
-openai>=1.0
+# openai is intentionally excluded: it pulls in packages that conflict with Ubuntu's
+# system site-packages on s390x and breaks the AI Investigator instead of helping it.
+# The investigator's requests fallback (no openai package needed) works correctly on LinuxONE.
