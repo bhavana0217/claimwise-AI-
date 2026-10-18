@@ -86,8 +86,25 @@ def page_header(title: str, desc: str = "", notice: html.Div | None = None) -> h
     return html.Div(children, style={"marginBottom": "20px"})
 
 
+_BADGE_CLASS: dict[str, str] = {
+    # risk / priority levels
+    "high": "high", "medium": "medium", "low": "low",
+    "clean": "clean", "closed": "closed",
+    # payer update status
+    "in effect": "in-effect", "upcoming": "upcoming", "date unknown": "closed",
+    # denial stage (work_status)
+    "open - no appeal filed": "stage-open-no-appeal",
+    "open - appeal pending": "stage-appeal-pending",
+    "open - status unclear": "stage-unclear",
+    "closed - recovered": "stage-recovered",
+    "closed - written off": "stage-written-off",
+}
+
+
 def badge(level: str) -> html.Span:
-    return html.Span(level, className=f"badge {level.lower()}")
+    key = (level or "").lower()
+    cls = _BADGE_CLASS.get(key, key.replace(" ", "-").replace("/", "-"))
+    return html.Span(level, className=f"badge {cls}")
 
 
 def simple_table(df: pd.DataFrame) -> html.Table:
@@ -115,15 +132,64 @@ def text_col(name: str, col: str) -> dict:
 
 
 STATUS_COL = {"name": "Reviewer status", "id": "review_status", "editable": True, "presentation": "dropdown"}
-LEVEL_STYLE = {"High": ("#9A2A12", "#FDE8E4"), "Medium": ("#7A4B00", "#FEF1D6"), "Low": ("#1E4F80", "#E3EEF9"),
-               "Clean": ("#1F6B45", "#E4F4EA"), "Closed": ("#4B5A69", "#EEF1F4")}
+LEVEL_STYLE = {
+    "High": ("#9A2A12", "#FDE8E4"), "Medium": ("#7A4B00", "#FEF1D6"),
+    "Low": ("#1E4F80", "#E3EEF9"), "Clean": ("#1F6B45", "#E4F4EA"),
+    "Closed": ("#4B5A69", "#EEF1F4"),
+}
+# Denial stage (work_status) colors
+_STAGE_STYLE = {
+    "Open - no appeal filed": ("#9A3412", "#FFF7ED"),
+    "Open - appeal pending":  ("#7A4B00", "#FFFBEB"),
+    "Open - status unclear":  ("#374151", "#F3F4F6"),
+    "Closed - recovered":     ("#1F6B45", "#E4F4EA"),
+    "Closed - written off":   ("#4B5A69", "#EEF1F4"),
+}
+# Payer update status colors
+_PAYER_STATUS_STYLE = {
+    "In effect":   ("#0A6B63", "#E0F2F0"),
+    "Upcoming":    ("#1E3A8A", "#EFF6FF"),
+    "Date unknown":("#4B5A69", "#EEF1F4"),
+}
 
 
 def level_styles(col: str) -> list[dict]:
     return [
         {"if": {"filter_query": f'{{{col}}} = "{lvl}"', "column_id": col},
-         "color": fg, "backgroundColor": bg, "fontWeight": "700"}
+         "color": fg, "backgroundColor": bg, "fontWeight": "700", "borderRadius": "4px"}
         for lvl, (fg, bg) in LEVEL_STYLE.items()
+    ]
+
+
+def stage_styles() -> list[dict]:
+    return [
+        {"if": {"filter_query": f'{{"work_status"}} = "{s}"', "column_id": "work_status"},
+         "color": fg, "backgroundColor": bg, "fontWeight": "600"}
+        for s, (fg, bg) in _STAGE_STYLE.items()
+    ]
+
+
+def payer_status_styles() -> list[dict]:
+    return [
+        {"if": {"filter_query": f'{{"status"}} = "{s}"', "column_id": "status"},
+         "color": fg, "backgroundColor": bg, "fontWeight": "600"}
+        for s, (fg, bg) in _PAYER_STATUS_STYLE.items()
+    ]
+
+
+def score_bar_styles() -> list[dict]:
+    """Stacked background-gradient rules giving priority_score column a proportional bar."""
+    bands = [
+        (20, "rgba(34,197,94,0.15)"),
+        (40, "rgba(59,130,246,0.15)"),
+        (60, "rgba(245,158,11,0.18)"),
+        (80, "rgba(239,68,68,0.2)"),
+    ]
+    return [
+        {"if": {"filter_query": f"{{priority_score}} >= {t}", "column_id": "priority_score"},
+         "background": f"linear-gradient(to right, {c} {t}%, transparent {t}%)",
+         "fontVariantNumeric": "tabular-nums", "fontWeight": "700"}
+        for t, c in bands
     ]
 
 
@@ -390,7 +456,7 @@ def appeal_layout() -> html.Div:
         html.Div("Values", className="field-label"),
         dcc.Dropdown(id="apl-values", multi=True, placeholder="Choose one or more (leave empty to show everything)"),
         html.Div(id="apl-kpis"),
-        make_table("apl-table", columns, level_styles("priority_level")),
+        make_table("apl-table", columns, level_styles("priority_level") + stage_styles() + score_bar_styles()),
         html.Div(id="apl-note", className="caption"),
         html.Button("Download this view as CSV", id="apl-download-btn", className="btn secondary"),
         dcc.Download(id="apl-download"),
@@ -643,7 +709,7 @@ def payer_layout() -> html.Div:
                      className="cw-demo"),
         ),
         html.Div(id="alert-kpis"),
-        make_table("alert-table", columns, level_styles("severity"), page_size=8, with_status=False),
+        make_table("alert-table", columns, level_styles("severity") + payer_status_styles(), page_size=8, with_status=False),
         html.Div(id="alert-detail"),
         html.Details([
             html.Summary("Simulate a new payer update arriving", style={"fontWeight": "600", "cursor": "pointer", "padding": "6px 0"}),
