@@ -668,40 +668,104 @@ def sim_update(add, reset, payer, severity, topic, summary, date, codes, sim):
 # ------------------------------------------------------------------------------ notifications
 def notifications_layout() -> html.Div:
     smtp = smtp_settings_from_env()
-    banner = (html.Div(f"Email server configured ({smtp['host']}). Messages will be sent for real.", className="cw-ok") if smtp else
-              html.Div([html.B("Preview mode. "), "No email server is configured, so nothing will actually be sent. 'Send' saves the "
-                        "message as a preview file in output/outbox/. See the README to connect an email server."], className="cw-demo"))
-    return html.Div([
-        html.H3("Email notifications"), banner,
+    # Card A: active alerts summary
+    card_a = html.Div([
+        html.Div("Active alerts", style={"fontWeight": "700", "fontSize": "15px",
+                                          "color": "var(--text-primary)", "marginBottom": "4px"}),
+        html.Div("Alerts that would be included in the next email based on your current trigger settings.",
+                 className="caption", style={"marginBottom": "12px"}),
+        html.Div(id="n-alerts"),
+    ], className="card")
+
+    # Card B: alert rules
+    card_b = html.Div([
+        html.Div("Alert rules", style={"fontWeight": "700", "fontSize": "15px",
+                                        "color": "var(--text-primary)", "marginBottom": "4px"}),
+        html.Div("Choose which conditions trigger an email notification.",
+                 className="caption", style={"marginBottom": "14px"}),
+        dcc.Checklist(
+            id="n-events",
+            value=["hp", "ov", "pu", "ck"],
+            options=[
+                {"label": "High-priority open denials", "value": "hp"},
+                {"label": "Open denied value above a limit", "value": "ov"},
+                {"label": "Payer rule update affects open denials", "value": "pu"},
+                {"label": "Claims flagged by the claim checker", "value": "ck"},
+            ],
+            labelStyle={"display": "flex", "alignItems": "center", "gap": "8px",
+                        "padding": "8px 0", "borderBottom": "1px solid var(--border)",
+                        "cursor": "pointer", "fontSize": "14px", "color": "var(--text-primary)"},
+            inputStyle={"width": "16px", "height": "16px", "cursor": "pointer", "accentColor": "var(--teal-600)"},
+        ),
         html.Div([
             html.Div([
-                html.H4("Who gets notified"),
-                html.Div("Administrator email addresses (separate with commas)", className="field-label"),
-                dcc.Textarea(id="n-recipients", style={"width": "100%", "height": "70px"}, placeholder="admin@hospital.org, billing.lead@hospital.org"),
-                html.H4("What triggers an email"),
-                dcc.Checklist(id="n-events", value=["hp", "ov", "pu", "ck"], labelStyle={"display": "block", "margin": "6px 0"},
-                              inputStyle={"marginRight": "8px"},
-                              options=[{"label": "High-priority open denials", "value": "hp"},
-                                       {"label": "Open denied value above a limit", "value": "ov"},
-                                       {"label": "Payer rule update affects open denials", "value": "pu"},
-                                       {"label": "Claims flagged by the claim checker", "value": "ck"}]),
-                html.Div("Notify when at least this many high-priority denials", className="field-label"),
-                dcc.Input(id="n-hp-min", type="number", min=1, value=1),
-                html.Div("Open denied value limit ($)", className="field-label"),
-                dcc.Input(id="n-ov-limit", type="number", min=0, value=1_000_000),
-                html.Div("Notify when at least this many claims are flagged", className="field-label"),
-                dcc.Input(id="n-ck-min", type="number", min=1, value=1),
+                html.Div("Min high-priority denials to trigger", className="field-label",
+                         style={"marginTop": "14px", "marginBottom": "4px"}),
+                dcc.Input(id="n-hp-min", type="number", min=1, value=1,
+                          style={"width": "100px"}),
             ]),
-            html.Div([html.H4("Alerts that would be sent now"), html.Div(id="n-alerts")]),
-        ], className="split"),
-        html.Hr(),
-        html.Div(id="n-warning"),
-        html.Details([html.Summary("Preview the email", style={"cursor": "pointer", "fontWeight": "600"}),
-                      html.Pre(id="n-preview", style={"whiteSpace": "pre-wrap", "background": "#fff", "border": "1px solid #DCE6EC",
-                                                      "borderRadius": "10px", "padding": "12px"})]),
-        html.Button("Send notification email", id="n-send", className="btn", disabled=True),
-        html.Div(id="n-result"),
-        html.Div("Emails contain totals only - no patient names, patient IDs or claim IDs. A real deployment still needs privacy and compliance review.", className="footer-note"),
+            html.Div([
+                html.Div("Open denied value limit ($)", className="field-label",
+                         style={"marginTop": "14px", "marginBottom": "4px"}),
+                dcc.Input(id="n-ov-limit", type="number", min=0, value=1_000_000,
+                          style={"width": "140px"}),
+            ]),
+            html.Div([
+                html.Div("Min flagged claims to trigger", className="field-label",
+                         style={"marginTop": "14px", "marginBottom": "4px"}),
+                dcc.Input(id="n-ck-min", type="number", min=1, value=1,
+                          style={"width": "100px"}),
+            ]),
+        ]),
+    ], className="card")
+
+    # Card C: recipients + delivery
+    smtp_banner = (
+        html.Div(f"Email server configured ({smtp['host']}). Messages will be sent for real.",
+                 className="cw-ok", style={"marginBottom": "12px"})
+        if smtp else
+        html.Div([html.B("Preview mode. "),
+                  "No email server is configured — 'Send' saves the message as a preview file in output/outbox/. "
+                  "See the README to connect an email server."],
+                 className="cw-demo", style={"marginBottom": "12px"})
+    )
+    card_c = html.Div([
+        html.Div("Recipients & delivery", style={"fontWeight": "700", "fontSize": "15px",
+                                                   "color": "var(--text-primary)", "marginBottom": "4px"}),
+        html.Div("Emails contain totals only — no patient names, IDs, or claim numbers.",
+                 className="caption", style={"marginBottom": "12px"}),
+        smtp_banner,
+        html.Div("Administrator email addresses (separate with commas)", className="field-label",
+                 style={"marginBottom": "4px"}),
+        dcc.Textarea(id="n-recipients", placeholder="admin@hospital.org, billing.lead@hospital.org",
+                     style={"width": "100%", "height": "64px", "boxSizing": "border-box"}),
+        html.Div(id="n-warning", style={"marginTop": "6px"}),
+        html.Details([
+            html.Summary("Preview email",
+                         style={"cursor": "pointer", "fontWeight": "600", "fontSize": "14px",
+                                "color": "var(--teal-600)", "padding": "10px 0"}),
+            html.Pre(id="n-preview",
+                     style={"whiteSpace": "pre-wrap", "background": "var(--bg-subtle)",
+                            "border": "1px solid var(--border)", "borderRadius": "8px",
+                            "padding": "12px", "fontSize": "13px", "marginTop": "6px",
+                            "color": "var(--text-primary)"}),
+        ], style={"marginTop": "4px"}),
+        html.Div([
+            html.Button("Send notification email", id="n-send", className="btn", disabled=True),
+            html.Div(id="n-result", style={"marginTop": "8px"}),
+        ], style={"marginTop": "14px"}),
+        html.Div("A real deployment needs privacy and compliance review before sending patient-related data.",
+                 className="caption", style={"marginTop": "12px", "fontStyle": "italic"}),
+    ], className="card")
+
+    return html.Div([
+        html.Div([
+            html.H3("Notifications", style={"margin": "0 0 4px"}),
+            html.Div("Configure email alerts that fire when claims data crosses the thresholds you set.",
+                     className="caption"),
+        ], style={"marginBottom": "20px"}),
+        html.Div([card_a, card_b, card_c],
+                 style={"display": "flex", "gap": "16px", "flexWrap": "wrap", "alignItems": "flex-start"}),
     ])
 
 
