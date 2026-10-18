@@ -617,33 +617,81 @@ def apl_download(_, stages, payers, actions, search, store):
 # ------------------------------------------------------------------------------ claim checker
 CHK_COLS = ["row_id", "claim_id", "insurance_provider", "billed_amount", "risk_score", "risk_level",
             "finding_type", "confirmed_issues", "risk_indicators", "review_status"]
-CHK_DIMS = ["Needs review only", "Risk level", "Payer", "Rule", "All claims"]
+
+
+def _fmt_rules(codes_str) -> str:
+    """Convert semicolon-separated rule codes to human-readable labels."""
+    if not codes_str or (isinstance(codes_str, float) and codes_str != codes_str):
+        return ""
+    codes = [c.strip() for c in str(codes_str).split(";") if c.strip()]
+    return "; ".join(RULES[c].label if c in RULES else c for c in codes)
 
 
 def checker_layout() -> html.Div:
-    columns = [text_col("Claim ID", "claim_id"), text_col("Payer", "insurance_provider"), money_col("Billed", "billed_amount"),
-               int_col("Risk score", "risk_score"), text_col("Level", "risk_level"), text_col("Finding", "finding_type"),
-               text_col("Confirmed issues", "confirmed_issues"), text_col("Risk indicators", "risk_indicators"), STATUS_COL]
+    columns = [
+        text_col("Claim ID", "claim_id"),
+        text_col("Payer", "insurance_provider"),
+        money_col("Billed", "billed_amount"),
+        int_col("Risk score", "risk_score"),
+        text_col("Level", "risk_level"),
+        text_col("Finding", "finding_type"),
+        text_col("Confirmed issues", "confirmed_issues"),
+        text_col("Risk indicators", "risk_indicators"),
+        STATUS_COL,
+    ]
+    level_opts = [{"label": l, "value": l} for l in RISK_LEVELS[1:]]
+    payer_opts = [{"label": p, "value": p} for p in sorted(ANALYZED["main"]["insurance_provider"].dropna().unique())]
+    rule_opts = [{"label": r.label, "value": c} for c, r in RULES.items()]
+
     return html.Div([
         page_header(
             "Claim checker",
             "Finds confirmed data issues (facts in the record) and risk indicators (patterns linked to denials, "
             "not predictions). No machine learning is used.",
         ),
-        html.Div("Claims to check", className="field-label"),
-        dcc.RadioItems(id="chk-source", options=[{"label": "Loaded dataset", "value": "main"},
-                                                 {"label": "Synthetic demo set (defects added on purpose)", "value": "demo"}],
-                       value="main", inline=True, inputStyle={"marginLeft": "14px", "marginRight": "5px"}),
+        html.Div("Dataset", className="field-label"),
+        dcc.RadioItems(
+            id="chk-source",
+            options=[{"label": "Loaded dataset", "value": "main"},
+                     {"label": "Synthetic demo set (defects added on purpose)", "value": "demo"}],
+            value="main",
+            inline=True,
+            inputStyle={"marginLeft": "14px", "marginRight": "5px"},
+        ),
         html.Div(id="chk-demo-note"),
         html.Div(id="chk-kpis"),
         dcc.Graph(id="chk-level-chart", config=GRAPH_CONFIG),
-        html.Div("Filter by", className="field-label"),
-        dcc.RadioItems(id="chk-dim", options=CHK_DIMS, value="Needs review only", inline=True,
-                       inputStyle={"marginLeft": "14px", "marginRight": "5px"}),
-        dcc.Dropdown(id="chk-values", multi=True, placeholder="Choose one or more (leave empty to show everything)",
-                     style={"marginTop": "8px"}),
+        # Filter bar (like appeal queue)
+        html.Div([
+            dcc.Checklist(
+                id="chk-needs-review",
+                options=[{"label": " Needs review only", "value": "yes"}],
+                value=["yes"],
+                inputStyle={"marginRight": "5px", "accentColor": "var(--teal-600)"},
+                labelStyle={"fontSize": "13px", "color": "var(--text-primary)", "cursor": "pointer"},
+            ),
+            dcc.Dropdown(id="chk-filter-level", options=level_opts, multi=True,
+                         placeholder="Risk level\u2026", clearable=True,
+                         style={"flex": "1", "minWidth": "140px"}),
+            dcc.Dropdown(id="chk-filter-payer", options=payer_opts, multi=True,
+                         placeholder="Payer\u2026", clearable=True,
+                         style={"flex": "2", "minWidth": "160px"}),
+            dcc.Dropdown(id="chk-filter-rule", options=rule_opts, multi=True,
+                         placeholder="Rule\u2026", clearable=True,
+                         style={"flex": "2", "minWidth": "180px"}),
+            dcc.Input(id="chk-search", type="text", placeholder="Search claim ID\u2026",
+                      debounce=True, className="apl-search-input"),
+            html.Button("Clear", id="chk-clear-filters", className="btn-ghost",
+                        style={"padding": "0 12px", "height": "38px", "fontSize": "13px"}),
+        ], className="apl-filter-bar"),
         html.Div(id="chk-banner"),
-        make_table("chk-table", columns, level_styles("risk_level")),
+        make_table("chk-table", columns,
+                   level_styles("risk_level") + [
+                       {"if": {"filter_query": '{claim_id} = "Missing"', "column_id": "claim_id"},
+                        "color": "#991B1B", "fontWeight": "700"},
+                       {"if": {"filter_query": '{insurance_provider} = "Missing"', "column_id": "insurance_provider"},
+                        "color": "#991B1B", "fontWeight": "700"},
+                   ]),
         html.Div(id="chk-note", className="caption"),
         html.Button("Download this view as CSV", id="chk-download-view-btn", className="btn secondary"),
         html.Button("Download all analyzed claims as CSV", id="chk-download-all-btn", className="btn secondary"),
@@ -652,42 +700,74 @@ def checker_layout() -> html.Div:
     ])
 
 
-def filter_checker(source: str, dim: str, values: list[str] | None) -> pd.DataFrame:
+def filter_checker(source: str, needs_review: list | None, levels: list | None,
+                   payers: list | None, rules: list | None, search: str | None) -> pd.DataFrame:
     df = ANALYZED[source].copy()
     df["row_id"] = df.index
-    if dim == "Needs review only":
+    if needs_review:
         df = df[df["needs_review"]]
-    elif dim == "Risk level" and values:
-        df = df[df["risk_level"].isin(values)]
-    elif dim == "Payer" and values:
-        df = df[df["insurance_provider"].isin(values)]
-    elif dim == "Rule" and values:
+    if levels:
+        df = df[df["risk_level"].isin(levels)]
+    if payers:
+        df = df[df["insurance_provider"].isin(payers)]
+    if rules:
         both = df["confirmed_issues"].fillna("") + ";" + df["risk_indicators"].fillna("")
-        df = df[both.str.contains("|".join(values), regex=True)]
+        df = df[both.str.contains("|".join(rules), regex=True)]
+    if search and (s := (search or "").strip()):
+        df = df[df["claim_id"].astype(str).str.contains(s, case=False, na=False, regex=False)]
     return df.sort_values(["risk_score", "billed_amount"], ascending=False)
 
 
-@app.callback(Output("chk-values", "options"), Output("chk-values", "value"), Output("chk-values", "style"),
-              Input("chk-dim", "value"), Input("chk-source", "value"))
-def chk_options(dim, source):
+def _apply_chk_display(view: pd.DataFrame) -> pd.DataFrame:
+    """Add readable rule labels and Missing markers for display."""
+    v = view.copy()
+    v["confirmed_issues"] = v["confirmed_issues"].apply(_fmt_rules)
+    v["risk_indicators"] = v["risk_indicators"].apply(_fmt_rules)
+    v["claim_id"] = v["claim_id"].fillna("Missing")
+    v["insurance_provider"] = v["insurance_provider"].fillna("Missing")
+    return v
+
+
+@app.callback(
+    Output("chk-filter-level", "value"),
+    Output("chk-filter-payer", "value"),
+    Output("chk-filter-rule", "value"),
+    Output("chk-search", "value"),
+    Output("chk-needs-review", "value"),
+    Input("chk-clear-filters", "n_clicks"),
+    prevent_initial_call=True,
+)
+def chk_clear_filters(_):
+    return None, None, None, "", ["yes"]
+
+
+@app.callback(
+    Output("chk-filter-payer", "options"),
+    Input("chk-source", "value"),
+)
+def chk_payer_opts(source):
     df = ANALYZED[source]
-    if dim == "Risk level":
-        opts = [{"label": x, "value": x} for x in RISK_LEVELS[1:]]
-    elif dim == "Payer":
-        opts = [{"label": x, "value": x} for x in sorted(df["insurance_provider"].dropna().unique())]
-    elif dim == "Rule":
-        opts = [{"label": r.label, "value": c} for c, r in RULES.items()]
-    else:
-        return [], [], {"display": "none"}
-    return opts, [], {"marginTop": "8px"}
+    return [{"label": p, "value": p} for p in sorted(df["insurance_provider"].dropna().unique())]
 
 
-@app.callback(Output("chk-table", "data"), Output("chk-table", "selected_rows"), Output("chk-kpis", "children"),
-              Output("chk-level-chart", "figure"), Output("chk-demo-note", "children"), Output("chk-banner", "children"),
-              Output("chk-note", "children"),
-              Input("chk-source", "value"), Input("chk-dim", "value"), Input("chk-values", "value"),
-              State("status-chk", "data"), State("theme-store", "data"))
-def chk_table(source, dim, values, store, theme):
+@app.callback(
+    Output("chk-table", "data"),
+    Output("chk-table", "selected_rows"),
+    Output("chk-kpis", "children"),
+    Output("chk-level-chart", "figure"),
+    Output("chk-demo-note", "children"),
+    Output("chk-banner", "children"),
+    Output("chk-note", "children"),
+    Input("chk-source", "value"),
+    Input("chk-needs-review", "value"),
+    Input("chk-filter-level", "value"),
+    Input("chk-filter-payer", "value"),
+    Input("chk-filter-rule", "value"),
+    Input("chk-search", "value"),
+    State("status-chk", "data"),
+    State("theme-store", "data"),
+)
+def chk_table(source, needs_review, levels, payers, rules, search, store, theme):
     analyzed = ANALYZED[source]
     summ = claim_check_summary(analyzed)
     kpis = html.Div([
@@ -696,17 +776,19 @@ def chk_table(source, dim, values, store, theme):
                  ("Value to review (est.)", money(summ["billed_value_requiring_review"]))]),
         html.Div(f"{summ['confirmed_issue_claims']:,} claims have a confirmed data issue and "
                  f"{summ['indicator_only_claims']:,} have a risk indicator only. The dollar figure is the billed amount on "
-                 "flagged claims - an estimate of value needing a person's attention, not a predicted or guaranteed loss.",
+                 "flagged claims \u2014 an estimate of value needing attention, not a predicted loss.",
                  className="caption")])
     fig = pc.level_fig(analyzed["risk_level"].value_counts().to_dict(), dark=(theme == "dark"))
     demo = (html.Div(f"These {len(DEMO_CLAIMS)} insurance claims are synthetic and contain deliberate problems so you can see "
                      f"each rule fire. {DEMO_INFO['self_pay_excluded']} self-pay row was excluded.", className="cw-demo")
             if source == "demo" else None)
-    banner = html.Div("No claims in this set were flagged for review by the rules.", className="cw-ok") if summ["flagged_claims"] == 0 else None
-    view = apply_status(filter_checker(source, dim, values), store)
-    note = f"Showing the top {MAX_ROWS:,} of {len(view):,} rows. The download has all rows." if len(view) > MAX_ROWS else (
-        "" if len(view) else "No claims match this filter.")
-    return records(view.head(MAX_ROWS), CHK_COLS), [], kpis, fig, demo, banner, note
+    banner = (html.Div("No claims in this set were flagged for review by the rules.", className="cw-ok")
+              if summ["flagged_claims"] == 0 else None)
+    view = apply_status(filter_checker(source, needs_review, levels, payers, rules, search), store)
+    display_view = _apply_chk_display(view)
+    note = (f"Showing the top {MAX_ROWS:,} of {len(view):,} rows. The download has all rows."
+            if len(view) > MAX_ROWS else ("" if len(view) else "No claims match this filter."))
+    return records(display_view.head(MAX_ROWS), CHK_COLS), [], kpis, fig, demo, banner, note
 
 
 @app.callback(Output("status-chk", "data"), Input("chk-table", "data_timestamp"),
@@ -747,15 +829,25 @@ def chk_detail(selected, rows, source):
     ], className="card")
 
 
-@app.callback(Output("chk-download", "data"), Input("chk-download-view-btn", "n_clicks"),
-              Input("chk-download-all-btn", "n_clicks"), State("chk-source", "value"), State("chk-dim", "value"),
-              State("chk-values", "value"), State("status-chk", "data"), prevent_initial_call=True)
-def chk_download(_v, _a, source, dim, values, store):
+@app.callback(
+    Output("chk-download", "data"),
+    Input("chk-download-view-btn", "n_clicks"),
+    Input("chk-download-all-btn", "n_clicks"),
+    State("chk-source", "value"),
+    State("chk-needs-review", "value"),
+    State("chk-filter-level", "value"),
+    State("chk-filter-payer", "value"),
+    State("chk-filter-rule", "value"),
+    State("chk-search", "value"),
+    State("status-chk", "data"),
+    prevent_initial_call=True,
+)
+def chk_download(_v, _a, source, needs_review, levels, payers, rules, search, store):
     if ctx.triggered_id == "chk-download-all-btn":
-        df = filter_checker(source, "All claims", None)
+        df = filter_checker(source, None, None, None, None, None)
         name = "claimwise_all_analyzed_claims.csv"
     else:
-        df = filter_checker(source, dim, values)
+        df = filter_checker(source, needs_review, levels, payers, rules, search)
         name = "claimwise_checked_claims.csv"
     df = apply_status(df, store).drop(columns=["claim_status_norm", "row_id"])
     return dcc.send_data_frame(df.to_csv, name, index=False)
