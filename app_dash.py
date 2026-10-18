@@ -376,18 +376,34 @@ _CHEVRON_L_SVG = (
     '</svg>'
 )
 
+# Restore collapsed state on page load (reads persisted store, applies class to root instantly)
 app.clientside_callback(
     """
-    function(collapsed) {
-        var sidebar = document.getElementById('cw-sidebar');
-        var main = document.querySelector('.cw-main');
-        if (sidebar) sidebar.classList.toggle('collapsed', !!collapsed);
-        if (main) main.classList.toggle('nav-collapsed', !!collapsed);
-        return window.dash_clientside.no_update;
+    function(stored) {
+        var root = document.querySelector('.cw-shell');
+        if (root) root.classList.toggle('sidebar-collapsed', !!stored);
+        return stored ? 'Expand navigation' : 'Collapse navigation';
     }
     """,
     Output("nav-collapse-btn", "title"),
-    Input("nav-collapsed", "data"),
+    Input("nav-state", "data"),
+)
+
+# Toggle collapsed on button click — instant, no server round-trip
+app.clientside_callback(
+    """
+    function(n_clicks, current) {
+        if (!n_clicks) return window.dash_clientside.no_update;
+        var newVal = !current;
+        var root = document.querySelector('.cw-shell');
+        if (root) root.classList.toggle('sidebar-collapsed', newVal);
+        return newVal;
+    }
+    """,
+    Output("nav-state", "data"),
+    Input("nav-collapse-btn", "n_clicks"),
+    State("nav-state", "data"),
+    prevent_initial_call=True,
 )
 
 # Clientside callback: apply theme from store to document element (instant, no Python round-trip)
@@ -1983,15 +1999,29 @@ def datasources_layout() -> html.Div:
 # ------------------------------------------------------------------------------ navigation sidebar
 _NAV_PAGES = ["overview", "payer", "appeal", "checker", "investigator", "datasources", "notify", "method"]
 
+_LOGO_MARK_SVG = (
+    '<svg width="28" height="28" viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">'
+    '<rect width="28" height="28" rx="7" fill="#0A6B63"/>'
+    '<path d="M9 14C9 11.24 11.24 9 14 9C15.66 9 17.13 9.82 18.04 11.07" '
+    'stroke="white" stroke-width="1.8" stroke-linecap="round"/>'
+    '<circle cx="14" cy="14" r="3" stroke="white" stroke-width="1.8"/>'
+    '<path d="M16.5 16.5L19.5 19.5" stroke="white" stroke-width="1.8" stroke-linecap="round"/>'
+    '</svg>'
+)
+
 sidebar = html.Nav([
     html.Div([
-        html.Div("ClaimWise AI", className="cw-nav-brand-text", id="cw-nav-brand-text"),
+        html.Div([
+            _icon(_LOGO_MARK_SVG),
+            html.Span("ClaimWise AI", className="cw-nav-brand-text"),
+        ], className="cw-logo-area"),
         html.Button(
             _icon(_CHEVRON_L_SVG),
             id="nav-collapse-btn",
             className="cw-nav-collapse-btn",
-            title="Collapse sidebar",
+            title="Collapse navigation",
             n_clicks=0,
+            **{"aria-label": "Collapse navigation"},
         ),
     ], className="cw-nav-brand"),
     html.Div([
@@ -2034,7 +2064,7 @@ app.layout = html.Div([
     dcc.Store(id="theme-store", storage_type="local", data="light"),
     dcc.Store(id="ds-claims-result", storage_type="session", data=None),
     dcc.Store(id="ds-denials-result", storage_type="session", data=None),
-    dcc.Store(id="nav-collapsed", storage_type="local", data=False),
+    dcc.Store(id="nav-state", storage_type="local", data=False),
     sidebar,
     html.Div([
         topbar,
@@ -2070,16 +2100,6 @@ def update_theme_icon(theme):
 
 
 # ------------------------------------------------------------------------------ navigation callbacks
-@app.callback(
-    Output("nav-collapsed", "data"),
-    Input("nav-collapse-btn", "n_clicks"),
-    State("nav-collapsed", "data"),
-    prevent_initial_call=True,
-)
-def toggle_nav_collapsed(n, current):
-    return not bool(current)
-
-
 @app.callback(
     Output("nav-page", "data"),
     Input({"type": "nav-btn", "page": ALL}, "n_clicks"),
