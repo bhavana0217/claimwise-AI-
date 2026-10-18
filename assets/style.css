@@ -175,8 +175,10 @@ body, .cw-topbar, .cw-page-content, .card, .kpi {
 /* ============================================================
    TYPOGRAPHY
    ============================================================ */
-h2, h3, h4 { color: var(--text-primary); margin: 14px 0 6px 0; }
-.caption { color: var(--text-muted); font-size: .86rem; margin: 4px 0 10px 0; }
+h2, h3, h4 { color: var(--text-primary); margin: 0 0 6px 0; }
+h3 { font-size: 1.3rem; font-weight: 700; letter-spacing: -0.01em; }
+h4 { font-size: 1.0rem; font-weight: 650; }
+.caption { color: var(--text-muted); font-size: .86rem; margin: 4px 0 10px 0; line-height: 1.55; }
 .footer-note { color: var(--text-muted); font-size: .82rem; margin-top: 14px; }
 
 /* ============================================================
@@ -208,10 +210,18 @@ h2, h3, h4 { color: var(--text-primary); margin: 14px 0 6px 0; }
 .kpi.hero .kpi-label { color: var(--teal-600); opacity: 0.85; }
 
 /* ============================================================
-   CHART GRID
+   CHART GRID — each chart in its own card
    ============================================================ */
 .chart-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 @media (max-width: 1000px) { .chart-row { grid-template-columns: 1fr; } }
+/* Wrap each chart in a card surface */
+.chart-row > * {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 8px 12px 4px 12px;
+  box-shadow: var(--shadow-card);
+}
 
 /* ============================================================
    CARD
@@ -219,7 +229,8 @@ h2, h3, h4 { color: var(--text-primary); margin: 14px 0 6px 0; }
 .card {
   background: var(--bg-surface);
   border: 1px solid var(--border);
-  border-radius: 12px; padding: 16px 18px; margin: 12px 0;
+  border-radius: 12px; padding: 16px 20px; margin: 12px 0;
+  box-shadow: var(--shadow-card);
 }
 
 /* ============================================================
@@ -280,16 +291,28 @@ h2, h3, h4 { color: var(--text-primary); margin: 14px 0 6px 0; }
    ============================================================ */
 .btn {
   background: var(--teal-600); color: var(--text-inverse);
-  border: none; border-radius: 8px; padding: 9px 18px;
+  border: none; border-radius: 8px; padding: 9px 20px;
   font-weight: 600; cursor: pointer; font-size: .9rem; margin: 6px 8px 6px 0;
+  font-family: inherit; transition: filter var(--ease), box-shadow var(--ease);
+  box-shadow: 0 1px 3px rgba(10,107,99,0.25);
 }
-.btn:hover { filter: brightness(0.9); }
+.btn:hover { filter: brightness(0.9); box-shadow: 0 2px 6px rgba(10,107,99,0.3); }
+.btn:focus-visible { outline: 2px solid var(--teal-600); outline-offset: 2px; }
 .btn.secondary {
   background: var(--bg-surface);
   color: var(--text-primary);
   border: 1px solid var(--border-strong);
+  box-shadow: var(--shadow-card);
 }
-.btn:disabled { background: var(--border-strong); cursor: not-allowed; }
+.btn.secondary:hover { background: var(--bg-hover); }
+.btn:disabled { background: var(--border-strong); cursor: not-allowed; box-shadow: none; }
+.btn-outline {
+  background: var(--bg-surface); color: var(--teal-600);
+  border: 1.5px solid var(--teal-600); border-radius: 8px; padding: 8px 18px;
+  font-weight: 600; cursor: pointer; font-size: .88rem; font-family: inherit;
+  transition: background var(--ease), color var(--ease);
+}
+.btn-outline:hover { background: var(--teal-100); }
 
 /* ============================================================
    FORM CONTROLS
@@ -420,8 +443,10 @@ input[type=text], input[type=number], textarea {
 .cw-nav-item.cw-nav-active {
   background: var(--sidebar-active-bg);
   border-left-color: var(--sidebar-active-border);
+  border-left-width: 4px;
   color: #fff;
   font-weight: 600;
+  box-shadow: inset 3px 0 8px rgba(10,107,99,0.15);
 }
 .cw-nav-item svg { flex-shrink: 0; }
 .cw-nav-item span { white-space: nowrap; overflow: hidden; transition: opacity 150ms ease; }
