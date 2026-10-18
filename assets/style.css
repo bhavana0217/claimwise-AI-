@@ -1204,6 +1204,182 @@ input[type=text], input[type=number], textarea {
 }
 
 /* ============================================================
+   HOW IT WORKS (method page)
+   ============================================================ */
+
+/* Three summary cards */
+.hw-summary-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+  margin-bottom: 20px;
+}
+.hw-summary-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-xl);
+  padding: 16px 18px;
+  box-shadow: var(--shadow-card);
+}
+.hw-card-num {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--teal-600);
+  letter-spacing: 0.08em;
+  margin-bottom: 6px;
+}
+.hw-card-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 6px;
+}
+.hw-card-body {
+  font-size: 13px;
+  color: var(--text-muted);
+  line-height: 1.55;
+}
+
+/* Design-choices callout */
+.hw-callout {
+  background: var(--warn-bg);
+  border: 1px solid #FDE68A;
+  border-left: 3px solid var(--warn-accent);
+  border-radius: var(--r-lg);
+  padding: 12px 14px;
+  margin-bottom: 14px;
+}
+[data-theme="dark"] .hw-callout {
+  background: rgba(217,119,6,0.08);
+  border-color: rgba(217,119,6,0.3);
+  border-left-color: #D97706;
+}
+.hw-callout-inner {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+.hw-callout-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--warn-accent);
+  color: white;
+  font-size: 11px;
+  font-weight: 700;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+.hw-callout-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--warn-text);
+  margin-bottom: 3px;
+}
+.hw-callout-body {
+  font-size: 12px;
+  color: var(--warn-text);
+  line-height: 1.5;
+}
+
+/* Accordion */
+.hw-accordion {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  margin-bottom: 8px;
+  overflow: hidden;
+  box-shadow: var(--shadow-card);
+}
+.hw-acc-summary {
+  padding: 13px 16px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  background: var(--bg-subtle);
+  list-style: none;
+  user-select: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.hw-acc-summary::-webkit-details-marker { display: none; }
+.hw-accordion[open] .hw-acc-summary { border-bottom: 1px solid var(--border); }
+.hw-acc-summary::after {
+  content: '\25BA';
+  font-size: 10px;
+  color: var(--text-muted);
+  transition: transform 0.2s;
+}
+.hw-accordion[open] .hw-acc-summary::after { transform: rotate(90deg); }
+.hw-acc-body {
+  padding: 16px;
+}
+
+/* Sub-headings within accordion */
+.hw-sub-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 8px;
+}
+
+/* Priority score equation */
+.hw-score-eq {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+.hw-eq-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+.hw-eq-chip {
+  background: var(--teal-100);
+  color: var(--teal-600);
+  border: 1px solid rgba(10,107,99,0.2);
+  border-radius: var(--r-pill);
+  padding: 3px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+[data-theme="dark"] .hw-eq-chip {
+  background: rgba(10,107,99,0.15);
+  color: #2DD4BF;
+  border-color: rgba(10,107,99,0.35);
+}
+.hw-eq-op {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+
+/* Chart inside accordion */
+.hw-chart { border-radius: var(--r-lg); overflow: hidden; }
+
+/* Limits list */
+.hw-limits-list {
+  padding-left: 20px;
+  margin: 0;
+}
+.hw-limits-list li {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+  line-height: 1.5;
+}
+
+/* ============================================================
    NARROW SCREEN
    ============================================================ */
 @media (max-width: 900px) {

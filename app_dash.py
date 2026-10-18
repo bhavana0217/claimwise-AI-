@@ -1657,42 +1657,142 @@ def method_layout() -> html.Div:
          {"Level": "Low", "Score": f"1-{LEVEL_BANDS[0][0] - 1}", "Meaning": "One or more minor items"},
          {"Level": "Medium", "Score": f"{LEVEL_BANDS[0][0]}-{LEVEL_BANDS[1][0] - 1}", "Meaning": "Meaningful issue or pattern"},
          {"Level": "High", "Score": f"{LEVEL_BANDS[1][0]}-{SCORE_CAP}", "Meaning": "Several issues or a serious one"}])
-    rules = pd.DataFrame([{"Rule": r.label, "Type": "Confirmed" if r.kind == "confirmed" else "Indicator",
-                           "Weight": r.weight, "What it checks": r.explanation} for r in RULES.values()])
+    rules_df = pd.DataFrame([{"Rule": r.label, "Type": "Confirmed" if r.kind == "confirmed" else "Indicator",
+                              "Weight": r.weight, "What it checks": r.explanation} for r in RULES.values()])
     band_df = denial_rate_by_amount_band(MERGED).rename(
         columns={"billed_amount_band": "Billed amount band", "claims": "Claims", "denial_rate_pct": "Denial rate (%)"})
+
+    # Three summary cards
+    summary_cards = html.Div([
+        html.Div([
+            html.Div("01", className="hw-card-num"),
+            html.Div("Claim checker", className="hw-card-title"),
+            html.Div(
+                f"Each claim is scored 0\u2013{SCORE_CAP} by rules that fire on billing data. "
+                f"Claims with any confirmed issue or score \u2265 {REVIEW_SCORE_THRESHOLD} are flagged for review.",
+                className="hw-card-body",
+            ),
+        ], className="hw-summary-card"),
+        html.Div([
+            html.Div("02", className="hw-card-num"),
+            html.Div("Appeal & rework queue", className="hw-card-title"),
+            html.Div(
+                f"Open denials are ranked by priority (0\u2013100) based on denied amount, "
+                f"appeal stage, and age. Older high-value items with no appeal score highest.",
+                className="hw-card-body",
+            ),
+        ], className="hw-summary-card"),
+        html.Div([
+            html.Div("03", className="hw-card-num"),
+            html.Div("AI investigator", className="hw-card-title"),
+            html.Div(
+                "A bounded LLM agent reads permitted billing fields and payer history, "
+                "then produces human-reviewable verification steps. Not a denial prediction.",
+                className="hw-card-body",
+            ),
+        ], className="hw-summary-card"),
+    ], className="hw-summary-cards")
+
+    # Design-choices callout
+    design_callout = html.Div([
+        html.Div([
+            html.Span("!", className="hw-callout-icon"),
+            html.Div([
+                html.Div("These weights are design choices, not industry standards", className="hw-callout-title"),
+                html.Div(
+                    "Risk levels, rule weights, and review thresholds were chosen for this prototype and have not been "
+                    "validated against real outcomes. A hospital should review and tune them with its own billing staff.",
+                    className="hw-callout-body",
+                ),
+            ]),
+        ], className="hw-callout-inner"),
+    ], className="hw-callout")
+
+    # Priority score equation chips
+    score_eq = html.Div([
+        html.Div("Priority score =", className="hw-eq-label"),
+        html.Span(f"Denied $ (0\u2013{AMOUNT_MAX_POINTS})", className="hw-eq-chip"),
+        html.Span("+", className="hw-eq-op"),
+        html.Span("Appeal stage (0, 20, or 30)", className="hw-eq-chip"),
+        html.Span("+", className="hw-eq-op"),
+        html.Span(f"Age (0\u2013{AGE_MAX_POINTS} over {AGE_CAP_DAYS} days)", className="hw-eq-chip"),
+        html.Span("\u2264 100", className="hw-eq-op"),
+    ], className="hw-score-eq")
+
+    # Denial-rate chart with takeaway
+    dr_fig = pc.payer_fig(
+        denial_rate_by_payer(MERGED).head(8),
+        float(MERGED["has_denial_record"].mean() * 100),
+    )
+
+    def _accordion_section(title: str, body, open_: bool = False) -> html.Details:
+        return html.Details([
+            html.Summary(title, className="hw-acc-summary"),
+            html.Div(body, className="hw-acc-body"),
+        ], open=open_, className="hw-accordion")
+
     return html.Div([
-        page_header("Method & limits",
-                    "How the risk engine and investigation tools work, and what they cannot determine."),
-        html.H4("Where the cut-offs and weights come from"),
-        html.Div([html.B("The risk levels, rule weights and review threshold are design choices made by our team for this prototype. "),
-                  "They are not taken from an industry standard, a payer policy or a published model, and they have not been "
-                  "validated against real outcomes. The rule categories (missing identifiers, invalid amounts, duplicate "
-                  "submissions, status mismatches) are common kinds of claim checks; the numbers attached to them are our "
-                  "judgment. A hospital should review and tune them with its own billing staff and data."], className="cw-warn"),
-        simple_table(bands),
-        dcc.Markdown(
-            f"**Claim checker.** Each rule is either a *confirmed data issue* (a fact visible in the record) or a *risk indicator* "
-            f"(a pattern associated with denials, **not** a prediction). The risk score is the sum of the weights of the rules that "
-            f"fire, capped at {SCORE_CAP}. A claim needs review if it has any confirmed issue or a score of {REVIEW_SCORE_THRESHOLD} "
-            f"or more. The high-amount threshold is {money(HIGH_AMOUNT_THRESHOLD)}."),
-        simple_table(rules),
-        dcc.Markdown(
-            f"**Appeal & rework queue.** Uses denials that already happened. Priority (0-100, open items only) = denied amount "
-            f"(up to {AMOUNT_MAX_POINTS} points, maximum at {money(AMOUNT_CAP)}) + appeal stage (30 if no appeal was filed, 20 if "
-            f"pending) + age (up to {AGE_MAX_POINTS} points over {AGE_CAP_DAYS} days). These weights are also our own design choices. "
-            "Payer appeal deadlines differ, so age is only a rough urgency signal.\n\n"
-            "**Why there is no machine-learning denial score.** We tested whether fields known *before* a claim is submitted show any "
-            "signal in this dataset. They do not (live numbers below), and the denial reason is only known *after* a denial, so using "
-            "it would be data leakage. A model would not be honest here."),
-        html.H4("Denial rate by billed-amount band (loaded data)"),
-        simple_table(band_df),
-        html.Div("Rates are nearly flat across bands, so billed amount does not separate denied from paid claims.", className="caption"),
-        dcc.Markdown(
-            "**Payer alerts and email.** The payer feed is synthetic and read from a local file. Email is preview-only unless an email "
-            "server is configured. Neither is a live integration.\n\n"
-            "**Limits.** Rules are generic examples, not any payer's actual policy. Data is synthetic. All dollar figures describe the "
-            "loaded data only. Next-step guidance is general and must be verified against payer policy by a human."),
+        page_header("How it works",
+                    "How the risk engine, appeal queue, and AI investigator work, and what they cannot determine."),
+
+        summary_cards,
+
+        _accordion_section("Risk scoring & claim checker", [
+            design_callout,
+            html.Div("Risk levels", className="hw-sub-title"),
+            simple_table(bands),
+            html.Div(
+                "Each rule fires as a confirmed data issue (a fact visible in the record) or a risk indicator "
+                f"(a pattern associated with denials, not a prediction). Score is capped at {SCORE_CAP}. "
+                f"High-amount threshold: {money(HIGH_AMOUNT_THRESHOLD)}.",
+                className="caption", style={"marginTop": "8px"},
+            ),
+            html.Div("Rule weights", className="hw-sub-title", style={"marginTop": "16px"}),
+            simple_table(rules_df),
+        ], open_=True),
+
+        _accordion_section("Appeal & rework queue", [
+            html.Div("How priority is calculated", className="hw-sub-title"),
+            score_eq,
+            html.Div(
+                f"Denied amount contributes up to {AMOUNT_MAX_POINTS} points (capped at {money(AMOUNT_CAP)}). "
+                f"Appeal stage adds 30 pts (no appeal) or 20 pts (pending). "
+                f"Age adds up to {AGE_MAX_POINTS} pts over {AGE_CAP_DAYS} days. "
+                "Payer appeal deadlines vary, so age is a rough urgency signal only.",
+                className="caption", style={"marginTop": "8px"},
+            ),
+        ]),
+
+        _accordion_section("Denial patterns in the loaded data", [
+            html.Div("Denial rate by payer", className="hw-sub-title"),
+            dcc.Graph(figure=dr_fig, config=GRAPH_CONFIG, className="hw-chart"),
+            html.Div("Denial rate by billed-amount band", className="hw-sub-title",
+                     style={"marginTop": "16px"}),
+            simple_table(band_df),
+            html.Div(
+                "Rates are nearly flat across amount bands, so billed amount alone does not predict denials. "
+                "A predictive model trained on this data would not be honest.",
+                className="caption", style={"marginTop": "6px"},
+            ),
+        ]),
+
+        _accordion_section("Payer alerts & email", [
+            html.Div(
+                "The payer feed is synthetic and read from a local CSV. Email is preview-only unless an SMTP "
+                "server is configured in environment variables. Neither is a live integration.",
+                className="caption",
+            ),
+        ]),
+
+        _accordion_section("Limitations", [
+            html.Ul([
+                html.Li("Rules are generic examples, not any payer's actual policy."),
+                html.Li("All data is synthetic. Dollar figures describe the loaded dataset only."),
+                html.Li("Next-step guidance is general and must be verified against payer policy by a human."),
+                html.Li("The AI investigator is a risk indicator tool, not a denial prediction."),
+                html.Li("No PHI is included in this prototype."),
+            ], className="hw-limits-list"),
+        ]),
     ])
 
 
@@ -1813,7 +1913,7 @@ sidebar = html.Nav([
         html.Div("ADMINISTRATION", className="cw-nav-group-label"),
         nav_item("datasources", "Data sources", _DATASOURCES_ICON),
         nav_item("notify", "Notifications", _NOTIFY_ICON),
-        nav_item("method", "Method & limits", _METHOD_ICON),
+        nav_item("method", "How it works", _METHOD_ICON),
     ], id="cw-nav-links"),
 ], className="cw-sidebar", id="cw-sidebar")
 
