@@ -4,3 +4,4 @@
 dash>=3.0,<4
 plotly>=5.18
 pytest>=7.0
+openai>=1.0
