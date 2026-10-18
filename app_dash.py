@@ -218,13 +218,39 @@ def make_table(table_id: str, columns: list[dict], styles: list[dict], page_size
         selected_rows=[],
         editable=with_status,
         dropdown={"review_status": {"options": [{"label": s, "value": s} for s in REVIEW_STATES], "clearable": False}} if with_status else {},
-        style_table={"overflowX": "auto", "border": "1px solid #DCE6EC", "borderRadius": "10px"},
-        style_header={"backgroundColor": "#F1F6F9", "color": "#5B6B7B", "fontWeight": "600", "border": "none",
-                      "borderBottom": "1px solid #DCE6EC"},
-        style_cell={"padding": "9px 12px", "fontSize": "14px", "border": "none", "borderBottom": "1px solid #EEF2F5",
-                    "textAlign": "left", "fontFamily": "inherit", "color": "#1B2A3A"},
-        style_data_conditional=styles + [{"if": {"state": "selected"}, "backgroundColor": "#D9EEEA", "border": "1px solid #0F766E"}],
-        css=[{"selector": ".Select-menu-outer", "rule": "display: block !important"}],
+        style_table={"overflowX": "auto", "border": "1px solid var(--border, #DCE6EC)",
+                     "borderRadius": "10px", "maxHeight": "480px", "overflowY": "auto"},
+        fixed_rows={"headers": True},
+        style_header={"backgroundColor": "var(--bg-subtle, #F1F6F9)",
+                      "color": "var(--text-secondary, #5B6B7B)",
+                      "fontWeight": "600", "border": "none",
+                      "borderBottom": "1px solid var(--border, #DCE6EC)",
+                      "position": "sticky", "top": "0", "zIndex": "1"},
+        style_cell={"padding": "9px 12px", "fontSize": "13px", "border": "none",
+                    "borderBottom": "1px solid var(--border, #EEF2F5)",
+                    "textAlign": "left", "fontFamily": "inherit",
+                    "color": "var(--text-primary, #1B2A3A)"},
+        style_cell_conditional=[
+            {"if": {"column_type": "numeric"},
+             "textAlign": "right", "fontVariantNumeric": "tabular-nums"},
+        ],
+        style_data_conditional=styles + [
+            # Selected row
+            {"if": {"state": "selected"},
+             "backgroundColor": "var(--teal-100, #D9EEEA)",
+             "border": "1px solid var(--teal-600, #0F766E)"},
+            # Row hover (whole row)
+            {"if": {"state": "active"},
+             "backgroundColor": "var(--bg-hover, #EBF2F8)",
+             "border": "none"},
+        ],
+        css=[
+            {"selector": ".Select-menu-outer", "rule": "display: block !important"},
+            # Make the entire row trigger selection, not just the radio circle
+            {"selector": "tr", "rule": "cursor: pointer;"},
+            # Sticky header support
+            {"selector": ".dash-spreadsheet-container", "rule": "overflow: visible !important;"},
+        ],
     )
 
 
