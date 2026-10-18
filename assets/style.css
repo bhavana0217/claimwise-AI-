@@ -405,7 +405,8 @@ input[type=text], input[type=number], textarea {
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  transition: background 150ms ease, color 150ms ease, transform 220ms ease;
+  /* 200ms matches sidebar width + main margin-left transitions */
+  transition: background 150ms ease, color 150ms ease, transform 200ms cubic-bezier(0.4,0,0.2,1);
   font-family: inherit;
   line-height: 0;
 }
@@ -436,8 +437,9 @@ input[type=text], input[type=number], textarea {
   font-weight: 500;
   cursor: pointer;
   text-align: left;
+  /* justify-content is not animatable; removed to avoid jank */
   transition: background 150ms ease, color 150ms ease, border-color 150ms ease,
-              padding 220ms ease, justify-content 220ms ease;
+              padding 200ms cubic-bezier(0.4,0,0.2,1);
   font-family: inherit;
   position: relative;
 }
@@ -458,10 +460,18 @@ input[type=text], input[type=number], textarea {
   box-shadow: inset 3px 0 8px rgba(10,107,99,0.15);
 }
 .cw-nav-item svg { flex-shrink: 0; }
-.cw-nav-item span { white-space: nowrap; overflow: hidden; transition: opacity 150ms ease; }
+/* max-width drives the label slide-out; opacity softens it */
+.cw-nav-item span {
+  white-space: nowrap;
+  overflow: hidden;
+  max-width: 200px;
+  transition: max-width 200ms cubic-bezier(0.4,0,0.2,1), opacity 150ms ease;
+}
 
 /* --- Collapsed state (class on root .cw-shell) --- */
 .cw-shell.sidebar-collapsed .cw-sidebar { width: 72px; }
+/* Tighten brand padding so logo-mark(28px) + gap(4px) + button(28px) = 60px fits in 64px */
+.cw-shell.sidebar-collapsed .cw-nav-brand { padding-left: 6px; padding-right: 6px; gap: 4px; }
 .cw-shell.sidebar-collapsed .cw-nav-brand-text { opacity: 0; max-width: 0; }
 .cw-shell.sidebar-collapsed .cw-nav-collapse-btn { transform: rotate(180deg); }
 .cw-shell.sidebar-collapsed .cw-nav-group-label {

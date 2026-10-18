@@ -382,7 +382,10 @@ app.clientside_callback(
     function(stored) {
         var root = document.querySelector('.cw-shell');
         if (root) root.classList.toggle('sidebar-collapsed', !!stored);
-        return stored ? 'Expand navigation' : 'Collapse navigation';
+        var label = stored ? 'Expand navigation' : 'Collapse navigation';
+        var btn = document.getElementById('nav-collapse-btn');
+        if (btn) btn.setAttribute('aria-label', label);
+        return label;
     }
     """,
     Output("nav-collapse-btn", "title"),
@@ -397,6 +400,9 @@ app.clientside_callback(
         var newVal = !current;
         var root = document.querySelector('.cw-shell');
         if (root) root.classList.toggle('sidebar-collapsed', newVal);
+        var label = newVal ? 'Expand navigation' : 'Collapse navigation';
+        var btn = document.getElementById('nav-collapse-btn');
+        if (btn) btn.setAttribute('aria-label', label);
         return newVal;
     }
     """,
