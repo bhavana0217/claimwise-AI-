@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -61,6 +62,8 @@ BASE_UPDATES = load_updates(DATA_DIR / "payer_rule_updates.csv")
 CHECKER_SUMMARY_MAIN = claim_check_summary(ANALYZED["main"])
 PAYERS = sorted(QUEUE["insurance_provider"].dropna().unique())
 CODES = sorted(QUEUE["denial_reason_code"].dropna().unique())
+_AI_KEY_PRESENT = bool(os.environ.get("OPENAI_API_KEY", "").strip())
+_AI_MODEL = os.environ.get("COUVERTE_AGENT_MODEL", "gpt-4.1-mini")
 
 
 # ------------------------------------------------------------------------------ helpers
@@ -1161,6 +1164,13 @@ _DOLLAR_KEYS = {"billed_amount", "denied_amount", "peer_median_billed_amount",
                 "selected_billed_amount"}
 _RATE_KEYS   = {"denial_rate_pct"}
 
+_TOOL_DISPLAY = {
+    "get_claim_details":  "Claim Details",
+    "get_denial_history": "Denial History",
+    "get_payer_rules":    "Payer Rules",
+    "get_similar_claims": "Similar Claims",
+}
+
 
 def _fmt_field(key: str, val) -> str:
     """Format a single tool-result value for the two-column display table."""
@@ -1196,13 +1206,10 @@ def _tool_table(tool_result: dict) -> html.Table:
             continue  # nested objects handled separately
         label = _TOOL_LABELS.get(key, key.replace("_", " ").capitalize())
         rows.append(html.Tr([
-            html.Td(label, style={"fontWeight": "600", "width": "42%",
-                                  "padding": "5px 10px 5px 0", "verticalAlign": "top",
-                                  "color": "#374F66", "fontSize": "13px"}),
-            html.Td(_fmt_field(key, val), style={"padding": "5px 0",
-                                                  "fontSize": "13px", "color": "#0F2340"}),
+            html.Td(label, className="ev-lbl"),
+            html.Td(_fmt_field(key, val), className="ev-val"),
         ]))
-    # Render any nested list (e.g. top_denial_reasons) as sub-rows
+    # Render nested lists (e.g. top_denial_reasons)
     for key, val in tool_result.items():
         if isinstance(val, list) and val:
             label = _TOOL_LABELS.get(key, key.replace("_", " ").capitalize())
@@ -1218,124 +1225,331 @@ def _tool_table(tool_result: dict) -> html.Table:
                 else:
                     sub_rows.append(str(item))
             rows.append(html.Tr([
-                html.Td(label, style={"fontWeight": "600", "width": "42%",
-                                      "padding": "5px 10px 5px 0", "verticalAlign": "top",
-                                      "color": "#374F66", "fontSize": "13px"}),
+                html.Td(label, className="ev-lbl"),
                 html.Td(html.Ul([html.Li(r, style={"fontSize": "13px"}) for r in sub_rows]),
                         style={"padding": "5px 0"}),
             ]))
     return html.Table(rows, style={"width": "100%", "borderCollapse": "collapse"})
 
 
-def _trace_card(entry: dict) -> html.Div:
-    """Render one tool-trace entry as a labeled table with a raw-JSON toggle."""
+def _evidence_card(entry: dict) -> html.Div:
+    """One compact evidence card with a raw-data toggle."""
     tool_name = entry.get("tool", "unknown")
     tool_result = entry.get("result", {})
     raw_json = json.dumps(tool_result, indent=2, default=str)
+    display = _TOOL_DISPLAY.get(tool_name, tool_name.replace("_", " ").title())
     return html.Div([
-        html.Div(tool_name, style={"fontWeight": "700", "fontSize": "13px",
-                                   "color": "#0A6B63", "marginBottom": "8px",
-                                   "textTransform": "uppercase", "letterSpacing": "0.05em"}),
+        html.Div(display, className="ev-card-title"),
         _tool_table(tool_result),
         html.Details([
-            html.Summary("View raw data",
-                         style={"cursor": "pointer", "fontSize": "12px",
-                                "color": "#536678", "marginTop": "8px"}),
-            html.Pre(raw_json,
-                     style={"fontSize": "11px", "background": "#F4F7FA",
-                            "padding": "8px", "borderRadius": "6px",
-                            "overflowX": "auto", "marginTop": "4px"}),
+            html.Summary("View raw data", className="ev-raw-toggle"),
+            html.Pre(raw_json, className="ev-raw-pre"),
         ]),
-    ], className="card", style={"marginBottom": "10px"})
+    ], className="ev-card")
+
+
+def _inv_empty_state() -> html.Div:
+    """Shown when no investigation has been run yet."""
+    bullets = [
+        ("Reads claim billing fields and denial history", "No PHI is sent to any external service"),
+        ("Compares against payer historical denial patterns", "Based on the loaded dataset"),
+        ("Generates human-reviewable verification steps", "Not a denial prediction or billing decision"),
+    ]
+    return html.Div([
+        html.Div("What the investigator does", className="inv-empty-title"),
+        html.Div([
+            html.Div([
+                html.Div(html.Span(str(i + 1), className="inv-empty-num"), className="inv-empty-icon-wrap"),
+                html.Div([
+                    html.Div(b[0], className="inv-empty-bullet-head"),
+                    html.Div(b[1], className="inv-empty-bullet-sub"),
+                ]),
+            ], className="inv-empty-bullet")
+            for i, b in enumerate(bullets)
+        ], className="inv-empty-bullets"),
+        html.Div("Select a claim above and click Investigate to begin.", className="inv-empty-cta"),
+    ], className="inv-empty-state")
 
 
 def investigator_layout() -> html.Div:
     claim_ids = sorted(QUEUE["claim_id"].dropna().unique())
+
+    # Status chip
+    if _AI_KEY_PRESENT:
+        status_chip = html.Span(
+            [html.Span(className="inv-dot inv-dot-on"), f"AI connected \u00b7 {_AI_MODEL}"],
+            className="inv-status-chip connected",
+        )
+    else:
+        status_chip = html.Span(
+            [html.Span(className="inv-dot inv-dot-off"), "AI unavailable"],
+            className="inv-status-chip unavailable",
+            title="Set the OPENAI_API_KEY environment variable to enable AI investigation",
+        )
+
+    # Top 4 open claims by priority
+    top_open = (
+        QUEUE[QUEUE["is_open"] == True]
+        .sort_values("priority_score", ascending=False)
+        .head(4)
+    )
+    suggest_ids = [str(r["claim_id"]) for _, r in top_open.iterrows()]
+    chips = []
+    for i, (_, row) in enumerate(top_open.iterrows()):
+        cid = str(row["claim_id"])
+        payer = str(row.get("insurance_provider") or "")
+        amt = row.get("denied_amount")
+        amt_str = f"${float(amt):,.0f}" if pd.notna(amt) else "\u2014"
+        chips.append(
+            html.Button(
+                [
+                    html.Span(cid, className="inv-chip-id"),
+                    html.Span(f"{payer} \u00b7 {amt_str}", className="inv-chip-meta"),
+                ],
+                id={"type": "inv-suggest-chip", "index": i},
+                className="inv-suggest-chip",
+                n_clicks=0,
+            )
+        )
+
     return html.Div([
-        page_header(
-            "AI Investigator",
-            "Gathers evidence from claim data using AI-assisted tool calls. Results require human review.",
-            html.Div([html.B("Experimental \u2014 "),
-                      "requires OPENAI_API_KEY. Never discloses PHI. Not a denial prediction."],
-                     className="cw-demo"),
-        ),
-        html.Div("Select a claim from the appeal queue", className="field-label"),
-        dcc.Dropdown(
-            id="inv-claim-dropdown",
-            options=[{"label": str(c), "value": str(c)} for c in claim_ids],
-            placeholder="Select a claim from the appeal queue...",
-            clearable=True,
-        ),
-        html.Div("Or type a claim ID directly", className="field-label",
-                 style={"marginTop": "8px"}),
-        dcc.Input(id="inv-claim-input", type="text", placeholder="Claim ID", debounce=True,
-                  style={"width": "100%", "padding": "8px 12px", "borderRadius": "8px",
-                         "border": "1px solid #DCE6EC", "fontSize": "14px"}),
+        # Page header with status chip
+        html.Div([
+            html.Div([
+                html.H3("AI Investigator", style={"margin": "0 0 2px"}),
+                html.Div(
+                    "Gathers evidence using AI-assisted tool calls. Results require human review.",
+                    className="caption",
+                ),
+            ]),
+            status_chip,
+        ], className="inv-page-header"),
+
+        # Stores
+        dcc.Store(id="inv-suggest-ids", data=suggest_ids),
+        dcc.Store(id="inv-report-store"),
+        dcc.Download(id="inv-download"),
+
+        # Claim picker
+        html.Div([
+            html.Div("Claim ID", className="field-label"),
+            dcc.Dropdown(
+                id="inv-claim-select",
+                options=[{"label": str(c), "value": str(c)} for c in claim_ids],
+                placeholder="Type or pick a claim ID\u2026",
+                clearable=True,
+                searchable=True,
+            ),
+        ], style={"marginBottom": "12px"}),
+
+        # Suggested claim chips
+        html.Div([
+            html.Div("Suggested \u2014 top open claims by priority", className="field-label",
+                     style={"marginBottom": "6px"}),
+            html.Div(chips, className="inv-suggest-row"),
+        ], style={"marginBottom": "16px"}) if chips else None,
+
+        # Context card (populated by callback when claim is selected)
+        html.Div(id="inv-context-card"),
+
+        # Run button
         html.Button("Investigate", id="inv-run-btn", className="btn",
-                    style={"marginTop": "12px"}),
+                    style={"marginTop": "12px", "marginBottom": "16px"}),
+
+        # Result area (starts with empty state)
         dcc.Loading(
-            html.Div(id="inv-result"),
+            html.Div(id="inv-result", children=[_inv_empty_state()]),
             type="circle",
             color="#0A6B63",
             overlay_style={"visibility": "visible"},
             custom_spinner=html.Div([
-                html.Div(style={"width": "28px", "height": "28px",
-                                "border": "3px solid #E0F2F0",
-                                "borderTop": "3px solid #0A6B63",
-                                "borderRadius": "50%",
-                                "animation": "spin 0.8s linear infinite",
-                                "margin": "0 auto 10px auto"}),
-                html.Div("Investigating claim\u2026",
-                         style={"color": "#374F66", "fontSize": "14px",
-                                "fontWeight": "600"}),
-            ], style={"textAlign": "center", "padding": "32px 0"}),
+                html.Div(className="inv-spinner"),
+                html.Div([
+                    html.Div("Reading claim details", className="inv-step active"),
+                    html.Div("Comparing payer history", className="inv-step"),
+                    html.Div("Analyzing denial patterns", className="inv-step"),
+                    html.Div("Generating recommendations", className="inv-step"),
+                ], className="inv-step-list"),
+            ], className="inv-progress-panel"),
         ),
+
+        # Action buttons row (hidden until report is ready)
+        html.Div([
+            html.Button("Copy report", id="inv-copy-btn", className="btn-outline"),
+            html.Button("Download .txt", id="inv-download-btn", className="btn-outline"),
+            html.Button("Investigate another", id="inv-another-btn", className="btn-ghost"),
+        ], id="inv-actions-row", style={"display": "none", "gap": "8px",
+                                        "marginTop": "12px", "flexWrap": "wrap"}),
     ])
 
 
 @app.callback(
     Output("inv-result", "children"),
+    Output("inv-report-store", "data"),
+    Output("inv-actions-row", "style"),
     Input("inv-run-btn", "n_clicks"),
-    State("inv-claim-dropdown", "value"),
-    State("inv-claim-input", "value"),
+    State("inv-claim-select", "value"),
     prevent_initial_call=True,
 )
-def run_investigation(n_clicks, dropdown_val, input_val):
-    claim_id = (dropdown_val or input_val or "").strip()
+def run_investigation(n_clicks, claim_id):
+    import datetime
+    claim_id = (claim_id or "").strip()
     if not claim_id:
-        return html.Div("Please select or enter a claim ID before running.",
-                        className="cw-warn")
+        return (
+            html.Div("Please select or enter a claim ID before running.", className="cw-warn"),
+            no_update,
+            {"display": "none"},
+        )
     from src.agent import investigate
     result = investigate(claim_id)
     status = result.get("status", "error")
     summary = result.get("summary", "")
+
     if status == "unavailable":
-        return html.Div(summary, className="cw-warn")
+        return (
+            html.Div([
+                html.Div("AI investigator unavailable",
+                         style={"fontWeight": "700", "marginBottom": "4px"}),
+                html.Div("Set OPENAI_API_KEY to enable AI investigation.", className="caption"),
+            ], className="cw-warn"),
+            no_update,
+            {"display": "none"},
+        )
     if status == "error":
-        return html.Div(["Error: ", summary], className="cw-warn")
+        return (
+            html.Div(["Error: ", summary], className="cw-warn"),
+            no_update,
+            {"display": "none"},
+        )
+
+    ts = datetime.datetime.now().strftime("%b %-d, %Y at %-I:%M %p")
     trace = result.get("tool_trace", [])
-    trace_cards = [_trace_card(e) for e in trace] if trace else [
-        html.Div("No tools were called.", className="caption"),
-    ]
-    return html.Div([
-        # Markdown renders headings, bullets, numbered lists from the agent
-        dcc.Markdown(summary, className="cw-info",
-                     style={"lineHeight": "1.65"}),
-        html.Div(
-            [html.B("Human review required \u2014 "),
-             "this is AI-generated analysis, not a clinical or billing determination."],
-            className="cw-notice",
-            style={"marginTop": "8px"},
-        ),
-        html.Details([
-            html.Summary(
-                f"Tool trace \u2014 {len(trace)} tool call{'s' if len(trace) != 1 else ''}"
-                " (expand to see evidence gathered)",
-                style={"cursor": "pointer", "fontWeight": "600", "padding": "8px 0"},
+
+    # Report card
+    report_card = html.Div([
+        html.Div([
+            html.Div([
+                html.Span(f"Claim {claim_id}", className="inv-report-claim-id"),
+                html.Span(ts, className="inv-report-ts"),
+            ], className="inv-report-meta"),
+            html.Span("Human review required", className="badge inv-human-review"),
+        ], className="inv-report-header"),
+        dcc.Markdown(summary, className="inv-report-body"),
+    ], className="inv-report-card card")
+
+    # Evidence panel
+    if trace:
+        evidence_section = html.Div([
+            html.Div(
+                f"Evidence \u2014 {len(trace)} tool{'s' if len(trace) != 1 else ''} called",
+                className="inv-evidence-heading",
             ),
-            html.Div(trace_cards, style={"marginTop": "8px"}),
-        ], className="card", style={"marginTop": "12px"}),
-    ])
+            html.Div([_evidence_card(e) for e in trace], className="inv-evidence-grid"),
+        ], className="inv-evidence-section")
+    else:
+        evidence_section = None
+
+    result_div = html.Div([report_card, evidence_section])
+    actions_style = {"display": "flex", "gap": "8px", "marginTop": "12px", "flexWrap": "wrap"}
+    return result_div, summary, actions_style
+
+
+@app.callback(
+    Output("inv-claim-select", "value"),
+    Input({"type": "inv-suggest-chip", "index": ALL}, "n_clicks"),
+    State("inv-suggest-ids", "data"),
+    prevent_initial_call=True,
+)
+def chip_select_claim(n_clicks_list, suggest_ids):
+    if not ctx.triggered_id or not any(n_clicks_list):
+        return no_update
+    idx = ctx.triggered_id.get("index", 0)
+    if suggest_ids and idx < len(suggest_ids):
+        return suggest_ids[idx]
+    return no_update
+
+
+@app.callback(
+    Output("inv-context-card", "children"),
+    Input("inv-claim-select", "value"),
+    prevent_initial_call=True,
+)
+def show_context_card(claim_id):
+    if not claim_id:
+        return []
+    row = QUEUE[QUEUE["claim_id"].astype(str) == str(claim_id)]
+    if row.empty:
+        return []
+    r = row.iloc[0]
+    payer = str(r.get("insurance_provider") or "\u2014")
+    amt = r.get("denied_amount")
+    amt_str = f"${float(amt):,.0f}" if pd.notna(amt) else "\u2014"
+    stage = str(r.get("work_status") or "\u2014")
+    priority = str(r.get("priority_level") or "\u2014")
+    reason = str(r.get("reason_label") or r.get("denial_reason_description") or "\u2014")
+    if len(reason) > 60:
+        reason = reason[:57] + "\u2026"
+    return html.Div([
+        html.Div("Claim context", className="field-label", style={"marginBottom": "8px"}),
+        html.Div([
+            html.Div([html.Span("Payer", className="ctx-label"), html.Span(payer, className="ctx-value")]),
+            html.Div([html.Span("Denied", className="ctx-label"), html.Span(amt_str, className="ctx-value ctx-money")]),
+            html.Div([html.Span("Reason", className="ctx-label"), html.Span(reason, className="ctx-value")]),
+            html.Div([html.Span("Stage", className="ctx-label"), badge(stage)]),
+            html.Div([html.Span("Priority", className="ctx-label"), badge(priority)]),
+        ], className="inv-ctx-grid"),
+    ], className="inv-ctx-card", style={"marginBottom": "12px"})
+
+
+@app.callback(
+    Output("inv-download", "data"),
+    Input("inv-download-btn", "n_clicks"),
+    State("inv-report-store", "data"),
+    State("inv-claim-select", "value"),
+    prevent_initial_call=True,
+)
+def download_report(n_clicks, report_text, claim_id):
+    if not report_text:
+        return no_update
+    fname = f"investigation_{claim_id or 'unknown'}.txt"
+    return {"content": report_text, "filename": fname, "type": "text/plain"}
+
+
+@app.callback(
+    Output("inv-result", "children", allow_duplicate=True),
+    Output("inv-claim-select", "value", allow_duplicate=True),
+    Output("inv-actions-row", "style", allow_duplicate=True),
+    Output("inv-context-card", "children", allow_duplicate=True),
+    Input("inv-another-btn", "n_clicks"),
+    prevent_initial_call=True,
+)
+def investigate_another(n):
+    hidden = {"display": "none"}
+    return _inv_empty_state(), None, hidden, []
+
+
+app.clientside_callback(
+    """
+    function(n, reportText) {
+        if (!n || !reportText) return window.dash_clientside.no_update;
+        try {
+            navigator.clipboard.writeText(reportText);
+        } catch(e) {
+            var ta = document.createElement('textarea');
+            ta.value = reportText;
+            document.body.appendChild(ta);
+            ta.select();
+            document.execCommand('copy');
+            document.body.removeChild(ta);
+        }
+        return window.dash_clientside.no_update;
+    }
+    """,
+    Output("inv-copy-btn", "title"),
+    Input("inv-copy-btn", "n_clicks"),
+    State("inv-report-store", "data"),
+    prevent_initial_call=True,
+)
 
 
 # ------------------------------------------------------------------------------ method
