@@ -237,6 +237,33 @@ app.index_string = app.index_string.replace(
 )
 server = app.server
 
+_SUN_SVG = (
+    '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">'
+    '<circle cx="8" cy="8" r="3" stroke="currentColor" stroke-width="1.5"/>'
+    '<path d="M8 1V3M8 13V15M1 8H3M13 8H15M3.05 3.05L4.46 4.46M11.54 11.54L12.95 12.95'
+    'M12.95 3.05L11.54 4.46M4.46 11.54L3.05 12.95" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>'
+    '</svg>'
+)
+_MOON_SVG = (
+    '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">'
+    '<path d="M13.5 9.5A6 6 0 016.5 2.5a6 6 0 100 11 6 6 0 007-4z"'
+    ' stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>'
+    '</svg>'
+)
+
+# Clientside callback: apply theme from store to document element (instant, no Python round-trip)
+app.clientside_callback(
+    """
+    function(theme) {
+        document.documentElement.setAttribute('data-theme', theme || 'light');
+        return window.dash_clientside.no_update;
+    }
+    """,
+    Output("theme-toggle-btn", "title"),
+    Input("theme-store", "data"),
+    prevent_initial_call=False,
+)
+
 
 # ------------------------------------------------------------------------------ overview
 def overview_layout() -> html.Div:
@@ -264,14 +291,41 @@ def overview_layout() -> html.Div:
             "Open denied value is an estimate of what is still recoverable, not a guarantee.",
             className="caption"),
         html.Div([
-            dcc.Graph(figure=pc.stage_fig(denied_dollars_by_stage(asum)), config=GRAPH_CONFIG),
-            dcc.Graph(figure=pc.reasons_fig(by_reason), config=GRAPH_CONFIG),
-            html.Div([dcc.Graph(figure=pc.payer_fig(by_payer, ds["denial_rate_pct"]), config=GRAPH_CONFIG),
+            dcc.Graph(id="overview-stage-chart", figure={}, config=GRAPH_CONFIG),
+            dcc.Graph(id="overview-reason-chart", figure={}, config=GRAPH_CONFIG),
+            html.Div([dcc.Graph(id="overview-payer-chart", figure={}, config=GRAPH_CONFIG),
                       html.Div("Dashed line = overall denial rate. Payers differ only slightly in this dataset.", className="caption")]),
-            html.Div([dcc.Graph(figure=pc.monthly_fig(monthly), config=GRAPH_CONFIG) if len(monthly) else html.Div("No denial dates to chart."),
+            html.Div([dcc.Graph(id="overview-monthly-chart", figure={}, config=GRAPH_CONFIG) if len(monthly) else html.Div("No denial dates to chart."),
                       html.Div(partial_note, className="caption")]),
         ], className="chart-row"),
     ])
+
+
+# ------------------------------------------------------------------------------ overview chart callbacks
+@app.callback(
+    Output("overview-stage-chart", "figure"),
+    Output("overview-reason-chart", "figure"),
+    Output("overview-payer-chart", "figure"),
+    Output("overview-monthly-chart", "figure"),
+    Input("theme-store", "data"),
+    Input("nav-page", "data"),
+)
+def update_overview_charts(theme, page):
+    dark = theme == "dark"
+    asum = appeal_summary(QUEUE)
+    ds = denial_summary(MERGED)
+    by_payer = denial_rate_by_payer(MERGED)
+    by_reason = denials_by_reason(MERGED)
+    monthly = denied_by_month(MERGED)
+    monthly_fig = (
+        pc.monthly_fig(monthly, dark=dark) if len(monthly) else pc.monthly_fig(pd.DataFrame(columns=["month", "denied_amount", "denied", "is_partial"]), dark=dark)
+    )
+    return (
+        pc.stage_fig(denied_dollars_by_stage(asum), dark=dark),
+        pc.reasons_fig(by_reason, dark=dark),
+        pc.payer_fig(by_payer, ds["denial_rate_pct"], dark=dark),
+        monthly_fig,
+    )
 
 
 # ------------------------------------------------------------------------------ appeal queue
@@ -440,8 +494,8 @@ def chk_options(dim, source):
               Output("chk-level-chart", "figure"), Output("chk-demo-note", "children"), Output("chk-banner", "children"),
               Output("chk-note", "children"),
               Input("chk-source", "value"), Input("chk-dim", "value"), Input("chk-values", "value"),
-              State("status-chk", "data"))
-def chk_table(source, dim, values, store):
+              State("status-chk", "data"), State("theme-store", "data"))
+def chk_table(source, dim, values, store, theme):
     analyzed = ANALYZED[source]
     summ = claim_check_summary(analyzed)
     kpis = html.Div([
@@ -452,7 +506,7 @@ def chk_table(source, dim, values, store):
                  f"{summ['indicator_only_claims']:,} have a risk indicator only. The dollar figure is the billed amount on "
                  "flagged claims - an estimate of value needing a person's attention, not a predicted or guaranteed loss.",
                  className="caption")])
-    fig = pc.level_fig(analyzed["risk_level"].value_counts().to_dict())
+    fig = pc.level_fig(analyzed["risk_level"].value_counts().to_dict(), dark=(theme == "dark"))
     demo = (html.Div(f"These {len(DEMO_CLAIMS)} insurance claims are synthetic and contain deliberate problems so you can see "
                      f"each rule fire. {DEMO_INFO['self_pay_excluded']} self-pay row was excluded.", className="cw-demo")
             if source == "demo" else None)
@@ -1006,8 +1060,7 @@ topbar = html.Div([
     html.Span("IBM LinuxONE", className="cw-linuxone-badge"),
     html.Span("Synthetic demo data", className="cw-demo-pill"),
     html.Button(id="theme-toggle-btn", className="cw-theme-btn",
-                children="☀", title="Toggle theme",
-                style={"background": "none", "border": "none", "cursor": "pointer", "fontSize": "18px", "padding": "4px 8px"}),
+                children=_icon(_SUN_SVG), title="Toggle theme"),
 ], className="cw-topbar")
 
 # ------------------------------------------------------------------------------ layout
@@ -1028,6 +1081,27 @@ app.layout = html.Div([
         ),
     ], className="cw-main"),
 ], className="cw-shell")
+
+
+# ------------------------------------------------------------------------------ theme callbacks
+@app.callback(
+    Output("theme-store", "data"),
+    Input("theme-toggle-btn", "n_clicks"),
+    State("theme-store", "data"),
+    prevent_initial_call=True,
+)
+def toggle_theme(n, current):
+    return "light" if (current or "light") == "dark" else "dark"
+
+
+@app.callback(
+    Output("theme-toggle-btn", "children"),
+    Input("theme-store", "data"),
+)
+def update_theme_icon(theme):
+    if theme == "dark":
+        return _icon(_MOON_SVG)
+    return _icon(_SUN_SVG)
 
 
 # ------------------------------------------------------------------------------ navigation callbacks
