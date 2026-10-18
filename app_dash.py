@@ -476,7 +476,9 @@ def update_overview_charts(theme, page):
 # ------------------------------------------------------------------------------ appeal queue
 APL_COLS = ["claim_id", "insurance_provider", "denied_amount", "reason_label", "work_status",
             "priority_score", "priority_level", "review_status"]
-APL_DIMS = {"Denial stage": "work_status", "Payer": "insurance_provider", "Action category": "action_category"}
+_APL_STAGE_OPTS = [{"label": s, "value": s} for s in OPEN_STATUSES + CLOSED_STATUSES]
+_APL_PAYER_OPTS = [{"label": p, "value": p} for p in PAYERS]
+_APL_ACTION_OPTS = [{"label": a, "value": a} for a in sorted(QUEUE["action_category"].dropna().unique())]
 
 
 def appeal_layout() -> html.Div:
@@ -485,16 +487,36 @@ def appeal_layout() -> html.Div:
                text_col("Denial stage", "work_status"), int_col("Priority", "priority_score"),
                text_col("Level", "priority_level"), STATUS_COL]
     return html.Div([
-        page_header(
-            "Appeal & rework queue",
-            "Denied claims ranked for human follow-up by amount, appeal stage, and days since denial. "
-            "Click the circle at the left of a row to see details below. " + GUIDANCE_DISCLAIMER,
-        ),
-        html.Div("Filter by", className="field-label"),
-        dcc.RadioItems(id="apl-dim", options=list(APL_DIMS), value="Denial stage", inline=True,
-                       inputStyle={"marginLeft": "14px", "marginRight": "5px"}),
-        html.Div("Values", className="field-label"),
-        dcc.Dropdown(id="apl-values", multi=True, placeholder="Choose one or more (leave empty to show everything)"),
+        page_header("Appeal & rework queue",
+                    "Denied claims ranked by amount, appeal stage, and days since denial. " + GUIDANCE_DISCLAIMER),
+        # Three-dropdown filter bar
+        html.Div([
+            html.Div([
+                html.Div("Denial stage", className="field-label"),
+                dcc.Dropdown(id="apl-filter-stage", options=_APL_STAGE_OPTS,
+                             value=OPEN_STATUSES[:], multi=True, placeholder="All stages"),
+            ], style={"flex": "1 1 200px"}),
+            html.Div([
+                html.Div("Payer", className="field-label"),
+                dcc.Dropdown(id="apl-filter-payer", options=_APL_PAYER_OPTS,
+                             multi=True, placeholder="All payers"),
+            ], style={"flex": "1 1 180px"}),
+            html.Div([
+                html.Div("Action category", className="field-label"),
+                dcc.Dropdown(id="apl-filter-action", options=_APL_ACTION_OPTS,
+                             multi=True, placeholder="All categories"),
+            ], style={"flex": "1 1 200px"}),
+            html.Div([
+                html.Div("Claim ID search", className="field-label"),
+                dcc.Input(id="apl-search", type="text", placeholder="Search claim ID\u2026",
+                          debounce=True, style={"width": "100%", "boxSizing": "border-box"}),
+            ], style={"flex": "0 1 160px"}),
+        ], style={"display": "flex", "gap": "12px", "flexWrap": "wrap",
+                  "alignItems": "flex-end", "marginBottom": "4px"}),
+        html.Button("Clear filters", id="apl-clear-btn", n_clicks=0,
+                    style={"background": "none", "border": "none", "color": "var(--teal-600)",
+                           "fontSize": "0.82rem", "cursor": "pointer", "padding": "2px 0",
+                           "fontFamily": "inherit", "textDecoration": "underline"}),
         html.Div(id="apl-kpis"),
         make_table("apl-table", columns, level_styles("priority_level") + stage_styles() + score_bar_styles()),
         html.Div(id="apl-note", className="caption"),
@@ -504,23 +526,39 @@ def appeal_layout() -> html.Div:
     ])
 
 
-def filter_queue(dim: str, values: list[str] | None) -> pd.DataFrame:
-    col = APL_DIMS.get(dim, "work_status")
-    return QUEUE[QUEUE[col].isin(values)] if values else QUEUE
+def filter_queue(stages, payers, actions, search) -> pd.DataFrame:
+    df = QUEUE.copy()
+    if stages:
+        df = df[df["work_status"].isin(stages)]
+    if payers:
+        df = df[df["insurance_provider"].isin(payers)]
+    if actions:
+        df = df[df["action_category"].isin(actions)]
+    if search and (s := (search or "").strip()):
+        df = df[df["claim_id"].astype(str).str.contains(s, case=False, na=False, regex=False)]
+    return df
 
 
-@app.callback(Output("apl-values", "options"), Output("apl-values", "value"), Input("apl-dim", "value"))
-def apl_options(dim):
-    col = APL_DIMS[dim]
-    options = (OPEN_STATUSES + CLOSED_STATUSES) if col == "work_status" else sorted(QUEUE[col].dropna().unique())
-    return [{"label": o, "value": o} for o in options], (OPEN_STATUSES if col == "work_status" else [])
+# Clear filters callback
+@app.callback(
+    Output("apl-filter-stage", "value"),
+    Output("apl-filter-payer", "value"),
+    Output("apl-filter-action", "value"),
+    Output("apl-search", "value"),
+    Input("apl-clear-btn", "n_clicks"),
+    prevent_initial_call=True,
+)
+def apl_clear(_):
+    return OPEN_STATUSES[:], [], [], ""
 
 
 @app.callback(Output("apl-table", "data"), Output("apl-table", "selected_rows"), Output("apl-kpis", "children"),
-              Output("apl-note", "children"), Input("apl-dim", "value"), Input("apl-values", "value"),
+              Output("apl-note", "children"),
+              Input("apl-filter-stage", "value"), Input("apl-filter-payer", "value"),
+              Input("apl-filter-action", "value"), Input("apl-search", "value"),
               State("status-apl", "data"))
-def apl_table(dim, values, store):
-    view = apply_status(filter_queue(dim, values), store)
+def apl_table(stages, payers, actions, search, store):
+    view = apply_status(filter_queue(stages, payers, actions, search), store)
     kpis = kpi_row([("Claims in view", f"{len(view):,}"),
                     ("Denied value in view", money(view["denied_amount"].fillna(0).sum())),
                     ("High priority", f"{(view['priority_level'] == 'High').sum():,}")])
@@ -564,10 +602,12 @@ def apl_detail(selected, rows):
     ], className="card")
 
 
-@app.callback(Output("apl-download", "data"), Input("apl-download-btn", "n_clicks"), State("apl-dim", "value"),
-              State("apl-values", "value"), State("status-apl", "data"), prevent_initial_call=True)
-def apl_download(_, dim, values, store):
-    view = apply_status(filter_queue(dim, values), store)
+@app.callback(Output("apl-download", "data"), Input("apl-download-btn", "n_clicks"),
+              State("apl-filter-stage", "value"), State("apl-filter-payer", "value"),
+              State("apl-filter-action", "value"), State("apl-search", "value"),
+              State("status-apl", "data"), prevent_initial_call=True)
+def apl_download(_, stages, payers, actions, search, store):
+    view = apply_status(filter_queue(stages, payers, actions, search), store)
     return dcc.send_data_frame(view.to_csv, "claimwise_appeal_queue.csv", index=False)
 
 
