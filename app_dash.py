@@ -863,104 +863,126 @@ def sim_update(add, reset, payer, severity, topic, summary, date, codes, sim):
 # ------------------------------------------------------------------------------ notifications
 def notifications_layout() -> html.Div:
     smtp = smtp_settings_from_env()
-    # Card A: active alerts summary
-    card_a = html.Div([
-        html.Div("Active alerts", style={"fontWeight": "700", "fontSize": "15px",
-                                          "color": "var(--text-primary)", "marginBottom": "4px"}),
-        html.Div("Alerts that would be included in the next email based on your current trigger settings.",
-                 className="caption", style={"marginBottom": "12px"}),
+
+    # SMTP status chip (static, computed at page load)
+    if smtp:
+        smtp_chip = html.Span(
+            [html.Span(className="n-dot n-dot-on"), f"SMTP \u00b7 {smtp['host']}"],
+            className="n-smtp-chip connected",
+        )
+    else:
+        smtp_chip = html.Span(
+            [html.Span(className="n-dot n-dot-off"), "Preview mode"],
+            className="n-smtp-chip preview",
+            title="No email server configured. Sends save a preview file in output/outbox/.",
+        )
+
+    # Summary strip with dynamic text
+    summary_strip = html.Div([
+        html.Div(id="n-summary-text", className="n-summary-text",
+                 children="Loading\u2026"),
+        html.Div([
+            smtp_chip,
+            html.Button("Send", id="n-send", className="btn", disabled=True,
+                        style={"height": "32px", "padding": "0 14px", "fontSize": "13px"}),
+        ], className="n-summary-controls"),
+    ], className="n-summary-strip")
+
+    # Left col: alert feed
+    left_col = html.Div([
+        html.Div([
+            html.Div("Active alerts", className="n-col-title"),
+            html.Div("Alerts matching your current trigger settings.", className="caption"),
+        ], style={"marginBottom": "12px"}),
         html.Div(id="n-alerts"),
-    ], className="card")
+    ], className="card n-left-col")
 
-    # Card B: alert rules
-    card_b = html.Div([
-        html.Div("Alert rules", style={"fontWeight": "700", "fontSize": "15px",
-                                        "color": "var(--text-primary)", "marginBottom": "4px"}),
-        html.Div("Choose which conditions trigger an email notification.",
-                 className="caption", style={"marginBottom": "14px"}),
-        dcc.Checklist(
-            id="n-events",
-            value=["hp", "ov", "pu", "ck"],
-            options=[
-                {"label": "High-priority open denials", "value": "hp"},
-                {"label": "Open denied value above a limit", "value": "ov"},
-                {"label": "Payer rule update affects open denials", "value": "pu"},
-                {"label": "Claims flagged by the claim checker", "value": "ck"},
-            ],
-            labelStyle={"display": "flex", "alignItems": "center", "gap": "8px",
-                        "padding": "8px 0", "borderBottom": "1px solid var(--border)",
-                        "cursor": "pointer", "fontSize": "14px", "color": "var(--text-primary)"},
-            inputStyle={"width": "16px", "height": "16px", "cursor": "pointer", "accentColor": "var(--teal-600)"},
-        ),
+    # Right col: settings + recipients
+    toggle_items = [
+        ("hp", "High-priority open denials", "Fires when open high-priority claims exist"),
+        ("ov", "Open denied value above limit", "Fires when total open denied $$ exceeds threshold"),
+        ("pu", "Payer rule update affects denials", "Fires when a payer update matches open denials"),
+        ("ck", "Flagged claims from checker", "Fires when claim checker finds issues"),
+    ]
+    toggle_rows = []
+    for val, label, hint in toggle_items:
+        toggle_rows.append(
+            html.Label([
+                html.Div([
+                    html.Div(label, className="n-toggle-label"),
+                    html.Div(hint, className="n-toggle-hint"),
+                ], className="n-toggle-text"),
+                dcc.Checklist(
+                    id=f"n-toggle-{val}",
+                    options=[{"label": "", "value": val}],
+                    value=[val],
+                    inputStyle={"display": "none"},
+                    labelClassName="n-toggle-pill-wrap",
+                    labelStyle={"cursor": "pointer"},
+                ),
+            ], className="n-toggle-row")
+        )
+
+    thresholds = html.Div([
         html.Div([
-            html.Div([
-                html.Div("Min high-priority denials to trigger", className="field-label",
-                         style={"marginTop": "14px", "marginBottom": "4px"}),
-                dcc.Input(id="n-hp-min", type="number", min=1, value=1,
-                          style={"width": "100px"}),
-            ]),
-            html.Div([
-                html.Div("Open denied value limit ($)", className="field-label",
-                         style={"marginTop": "14px", "marginBottom": "4px"}),
-                dcc.Input(id="n-ov-limit", type="number", min=0, value=1_000_000,
-                          style={"width": "140px"}),
-            ]),
-            html.Div([
-                html.Div("Min flagged claims to trigger", className="field-label",
-                         style={"marginTop": "14px", "marginBottom": "4px"}),
-                dcc.Input(id="n-ck-min", type="number", min=1, value=1,
-                          style={"width": "100px"}),
-            ]),
-        ]),
-    ], className="card")
+            html.Div("Min high-priority denials", className="n-thresh-label"),
+            dcc.Input(id="n-hp-min", type="number", min=1, value=1, className="n-thresh-input"),
+        ], className="n-thresh-row"),
+        html.Div([
+            html.Div("Open denied value limit ($)", className="n-thresh-label"),
+            dcc.Input(id="n-ov-limit", type="number", min=0, value=1_000_000, className="n-thresh-input"),
+        ], className="n-thresh-row"),
+        html.Div([
+            html.Div("Min flagged claims", className="n-thresh-label"),
+            dcc.Input(id="n-ck-min", type="number", min=1, value=1, className="n-thresh-input"),
+        ], className="n-thresh-row"),
+    ], className="n-thresholds")
 
-    # Card C: recipients + delivery
-    smtp_banner = (
-        html.Div(f"Email server configured ({smtp['host']}). Messages will be sent for real.",
-                 className="cw-ok", style={"marginBottom": "12px"})
-        if smtp else
-        html.Div([html.B("Preview mode. "),
-                  "No email server is configured — 'Send' saves the message as a preview file in output/outbox/. "
-                  "See the README to connect an email server."],
-                 className="cw-demo", style={"marginBottom": "12px"})
+    # Hidden master checklist (drives the callbacks)
+    master_events = dcc.Checklist(
+        id="n-events",
+        value=["hp", "ov", "pu", "ck"],
+        options=[
+            {"label": "", "value": "hp"},
+            {"label": "", "value": "ov"},
+            {"label": "", "value": "pu"},
+            {"label": "", "value": "ck"},
+        ],
+        style={"display": "none"},
     )
-    card_c = html.Div([
-        html.Div("Recipients & delivery", style={"fontWeight": "700", "fontSize": "15px",
-                                                   "color": "var(--text-primary)", "marginBottom": "4px"}),
-        html.Div("Emails contain totals only — no patient names, IDs, or claim numbers.",
-                 className="caption", style={"marginBottom": "12px"}),
-        smtp_banner,
-        html.Div("Administrator email addresses (separate with commas)", className="field-label",
-                 style={"marginBottom": "4px"}),
-        dcc.Textarea(id="n-recipients", placeholder="admin@hospital.org, billing.lead@hospital.org",
-                     style={"width": "100%", "height": "64px", "boxSizing": "border-box"}),
+
+    right_col = html.Div([
+        html.Div("Alert triggers", className="n-settings-title"),
+        html.Div(toggle_rows, className="n-toggle-list"),
+        master_events,
+        html.Hr(className="n-divider"),
+        html.Div("Thresholds", className="n-settings-title"),
+        thresholds,
+        html.Hr(className="n-divider"),
+        html.Div("Recipients", className="n-settings-title"),
+        html.Div("Separate addresses with commas. Emails contain totals only \u2014 no PHI.",
+                 className="caption", style={"marginBottom": "8px"}),
+        dcc.Textarea(id="n-recipients", placeholder="admin@hospital.org, billing@hospital.org",
+                     className="n-recipients-input"),
         html.Div(id="n-warning", style={"marginTop": "6px"}),
+        html.Hr(className="n-divider"),
         html.Details([
-            html.Summary("Preview email",
-                         style={"cursor": "pointer", "fontWeight": "600", "fontSize": "14px",
-                                "color": "var(--teal-600)", "padding": "10px 0"}),
-            html.Pre(id="n-preview",
-                     style={"whiteSpace": "pre-wrap", "background": "var(--bg-subtle)",
-                            "border": "1px solid var(--border)", "borderRadius": "8px",
-                            "padding": "12px", "fontSize": "13px", "marginTop": "6px",
-                            "color": "var(--text-primary)"}),
-        ], style={"marginTop": "4px"}),
-        html.Div([
-            html.Button("Send notification email", id="n-send", className="btn", disabled=True),
-            html.Div(id="n-result", style={"marginTop": "8px"}),
-        ], style={"marginTop": "14px"}),
-        html.Div("A real deployment needs privacy and compliance review before sending patient-related data.",
-                 className="caption", style={"marginTop": "12px", "fontStyle": "italic"}),
-    ], className="card")
+            html.Summary("Preview email", className="n-preview-toggle"),
+            html.Pre(id="n-preview", className="n-preview-pre"),
+        ]),
+        html.Div(id="n-result", style={"marginTop": "8px"}),
+        html.Div("A real deployment needs privacy review before sending patient-related data.",
+                 className="caption", style={"marginTop": "10px", "fontStyle": "italic"}),
+    ], className="card n-right-col")
 
     return html.Div([
         html.Div([
             html.H3("Notifications", style={"margin": "0 0 4px"}),
-            html.Div("Configure email alerts that fire when claims data crosses the thresholds you set.",
+            html.Div("Configure email alerts that fire when claims data crosses your thresholds.",
                      className="caption"),
-        ], style={"marginBottom": "20px"}),
-        html.Div([card_a, card_b, card_c],
-                 style={"display": "flex", "gap": "16px", "flexWrap": "wrap", "alignItems": "flex-start"}),
+        ], style={"marginBottom": "16px"}),
+        summary_strip,
+        html.Div([left_col, right_col], className="n-layout"),
     ])
 
 
@@ -973,22 +995,98 @@ def build_alerts(events, hp_min, ov_limit, ck_min, sim):
     return evaluate_events(QUEUE, CHECKER_SUMMARY_MAIN, current_impact(sim), settings)
 
 
+def _grouped_alert_feed(alerts: list) -> html.Div:
+    """Render alerts grouped by severity, each group as a collapsible section."""
+    from collections import defaultdict
+    by_sev: dict = defaultdict(list)
+    for a in alerts:
+        by_sev[a.severity].append(a)
+
+    sections = []
+    for sev in ["High", "Medium", "Low"]:
+        group = by_sev.get(sev, [])
+        if not group:
+            continue
+        rows = [
+            html.Div([
+                badge(sev),
+                html.Div([
+                    html.Div(a.title, className="n-alert-title"),
+                    html.Div(a.detail, className="n-alert-detail"),
+                ]),
+            ], className="n-alert-row")
+            for a in group
+        ]
+        sections.append(html.Details([
+            html.Summary([
+                html.Span(f"{len(group)}", className=f"n-sev-count n-sev-{sev.lower()}"),
+                html.Span(f" {sev} {('alert' if len(group) == 1 else 'alerts')}",
+                          className="n-group-label"),
+            ], className="n-group-summary"),
+            html.Div(rows, className="n-group-rows"),
+        ], open=(sev == "High"), className="n-alert-group"))
+
+    if not sections:
+        return html.Div("Nothing currently meets your trigger settings.", className="cw-ok")
+    return html.Div(sections)
+
+
+def _alerts_summary_text(alerts: list) -> str:
+    counts: dict = {"High": 0, "Medium": 0, "Low": 0}
+    for a in alerts:
+        sev = a.severity
+        if sev in counts:
+            counts[sev] += 1
+    total = sum(counts.values())
+    if total == 0:
+        return "No alerts ready"
+    parts = [f"{total} alert{'s' if total != 1 else ''} ready"]
+    for sev in ("High", "Medium", "Low"):
+        if counts[sev]:
+            parts.append(f"{counts[sev]} {sev}")
+    return " \u00b7 ".join(parts)
+
+
 NOTIFY_INPUTS = [Input("n-recipients", "value"), Input("n-events", "value"), Input("n-hp-min", "value"),
                  Input("n-ov-limit", "value"), Input("n-ck-min", "value"), Input("sim-updates", "data")]
 
 
-@app.callback(Output("n-alerts", "children"), Output("n-warning", "children"), Output("n-preview", "children"),
-              Output("n-send", "disabled"), *NOTIFY_INPUTS)
+@app.callback(
+    Output("n-alerts", "children"),
+    Output("n-warning", "children"),
+    Output("n-preview", "children"),
+    Output("n-send", "disabled"),
+    Output("n-summary-text", "children"),
+    *NOTIFY_INPUTS,
+)
 def notify_preview(recipients, events, hp_min, ov_limit, ck_min, sim):
     alerts = build_alerts(events, hp_min, ov_limit, ck_min, sim)
     valid, invalid = parse_recipients(recipients or "")
-    shown = ([html.Div([badge(a.severity), html.B("  " + a.title), html.Div(a.detail, className="caption")], style={"marginBottom": "8px"}) for a in alerts]
-             or [html.Div("Nothing currently meets your trigger settings.", className="cw-ok")])
-    warning = html.Div("These do not look like email addresses: " + ", ".join(invalid), className="cw-warn") if invalid else None
+    shown = _grouped_alert_feed(alerts)
+    warning = (html.Div("Not valid email addresses: " + ", ".join(invalid), className="cw-warn")
+               if invalid else None)
+    summary_text = _alerts_summary_text(alerts)
     if alerts and valid:
         msg = build_email(alerts, valid, sender=(smtp_settings_from_env() or {}).get("from", "claimwise@localhost"))
-        return shown, warning, f"To: {msg['To']}\nSubject: {msg['Subject']}\n\n{msg.get_content()}", False
-    return shown, warning, "Add at least one valid address and have at least one alert to see a preview.", True
+        preview = f"To: {msg['To']}\nSubject: {msg['Subject']}\n\n{msg.get_content()}"
+        return shown, warning, preview, False, summary_text
+    return shown, warning, "Add at least one valid address and at least one alert to see a preview.", True, summary_text
+
+
+@app.callback(
+    Output("n-events", "value"),
+    Input("n-toggle-hp", "value"),
+    Input("n-toggle-ov", "value"),
+    Input("n-toggle-pu", "value"),
+    Input("n-toggle-ck", "value"),
+)
+def sync_events(hp, ov, pu, ck):
+    """Keep n-events in sync with individual toggle checkboxes."""
+    result = []
+    for vals, code in [(hp, "hp"), (ov, "ov"), (pu, "pu"), (ck, "ck")]:
+        if vals:
+            result.extend(vals)
+    return result
 
 
 @app.callback(Output("n-result", "children"), Input("n-send", "n_clicks"), State("n-recipients", "value"),
