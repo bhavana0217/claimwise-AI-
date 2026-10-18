@@ -2,6 +2,8 @@
 
 ClaimWise AI is a claims review assistant for hospital billing teams, built for the IBM Z Datathon at UTD AI Biz Club. It helps a billing specialist decide which denied or flagged claims to look at first, what the likely problem is, and what steps to take next. It runs on IBM LinuxONE (s390x) as well as Mac and x86 Linux, uses no compiled ML packages, and degrades gracefully when optional services (email, OpenAI API) are not configured.
 
+**[Proof it runs on IBM LinuxONE (s390x)](docs/PROOF.md)**
+
 > **Decision support only.** Results require human review and are not a substitute for payer policy verification. A flag is not a determination that a claim will be denied or paid. "Billed value requiring review" is an estimate, not a guaranteed financial loss.
 
 ---
