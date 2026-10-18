@@ -314,15 +314,44 @@ input[type=text], input[type=number], textarea {
   z-index: 100;
   overflow-y: auto;
   overflow-x: hidden;
+  transition: width 220ms cubic-bezier(0.4,0,0.2,1);
 }
 .cw-nav-brand {
-  padding: 18px 16px 14px 16px;
-  font-size: 1.1rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 10px 14px 16px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+  flex-shrink: 0;
+  min-height: 48px;
+}
+.cw-nav-brand-text {
+  font-size: 1.05rem;
   font-weight: 700;
   color: #fff;
   letter-spacing: -0.01em;
-  border-bottom: 1px solid rgba(255,255,255,0.08);
+  white-space: nowrap;
+  overflow: hidden;
+  transition: opacity 150ms ease, max-width 220ms ease;
+  max-width: 160px;
 }
+.cw-nav-collapse-btn {
+  background: none;
+  border: none;
+  color: rgba(255,255,255,0.5);
+  cursor: pointer;
+  padding: 5px;
+  border-radius: var(--r-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: background 150ms ease, color 150ms ease, transform 220ms ease;
+  font-family: inherit;
+  line-height: 0;
+}
+.cw-nav-collapse-btn:hover { background: rgba(255,255,255,0.12); color: #fff; }
+.cw-nav-collapse-btn:focus-visible { outline: 2px solid var(--sidebar-active-border); outline-offset: 2px; }
 .cw-nav-group-label {
   padding: 16px 16px 4px 16px;
   font-size: 0.68rem;
@@ -330,6 +359,9 @@ input[type=text], input[type=number], textarea {
   letter-spacing: 0.09em;
   text-transform: uppercase;
   color: rgba(255,255,255,0.38);
+  white-space: nowrap;
+  overflow: hidden;
+  transition: opacity 150ms ease;
 }
 .cw-nav-item {
   display: flex;
@@ -345,8 +377,10 @@ input[type=text], input[type=number], textarea {
   font-weight: 500;
   cursor: pointer;
   text-align: left;
-  transition: background 150ms ease, color 150ms ease, border-color 150ms ease;
+  transition: background 150ms ease, color 150ms ease, border-color 150ms ease,
+              padding 220ms ease, justify-content 220ms ease;
   font-family: inherit;
+  position: relative;
 }
 .cw-nav-item:hover {
   background: rgba(255,255,255,0.07);
@@ -363,6 +397,38 @@ input[type=text], input[type=number], textarea {
   font-weight: 600;
 }
 .cw-nav-item svg { flex-shrink: 0; }
+.cw-nav-item span { white-space: nowrap; overflow: hidden; transition: opacity 150ms ease; }
+
+/* --- Collapsed state --- */
+.cw-sidebar.collapsed { width: 64px; }
+.cw-sidebar.collapsed .cw-nav-brand-text { opacity: 0; max-width: 0; }
+.cw-sidebar.collapsed .cw-nav-collapse-btn { transform: rotate(180deg); }
+.cw-sidebar.collapsed .cw-nav-group-label { opacity: 0; pointer-events: none; font-size: 0; padding: 8px 0 0 0; }
+.cw-sidebar.collapsed .cw-nav-item { padding: 10px 0; justify-content: center; gap: 0; border-left-color: transparent !important; }
+.cw-sidebar.collapsed .cw-nav-item.cw-nav-active { background: var(--sidebar-active-bg); }
+.cw-sidebar.collapsed .cw-nav-item span { opacity: 0; max-width: 0; overflow: hidden; }
+
+/* Tooltip on collapsed nav items */
+.cw-sidebar.collapsed .cw-nav-item::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  left: 68px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: var(--navy-800, #0F2340);
+  color: #fff;
+  padding: 5px 10px;
+  border-radius: var(--r-md);
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 130ms ease 80ms;
+  z-index: 200;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+}
+.cw-sidebar.collapsed .cw-nav-item:hover::after { opacity: 1; }
 
 /* ============================================================
    MAIN AREA
@@ -373,7 +439,9 @@ input[type=text], input[type=number], textarea {
   flex-direction: column;
   min-height: 100vh;
   flex: 1;
+  transition: margin-left 220ms cubic-bezier(0.4,0,0.2,1);
 }
+.cw-main.nav-collapsed { margin-left: 64px; }
 
 /* ============================================================
    TOP BAR
@@ -466,14 +534,13 @@ input[type=text], input[type=number], textarea {
 }
 
 /* ============================================================
-   NARROW SCREEN: collapse sidebar to icon strip
+   NARROW SCREEN
    ============================================================ */
 @media (max-width: 900px) {
-  .cw-sidebar { width: 56px; }
-  .cw-nav-brand { font-size: 0; padding: 18px 0 14px 0; text-align: center; }
-  .cw-nav-brand::after { content: "CW"; font-size: 0.8rem; font-weight: 700; color: #fff; }
-  .cw-nav-group-label { display: none; }
-  .cw-nav-item { padding: 10px 0; justify-content: center; gap: 0; }
-  .cw-nav-item span { display: none; }
-  .cw-main { margin-left: 56px; }
+  .cw-sidebar:not(.collapsed) { width: 56px; }
+  .cw-sidebar:not(.collapsed) .cw-nav-brand-text { opacity: 0; max-width: 0; }
+  .cw-sidebar:not(.collapsed) .cw-nav-group-label { opacity: 0; pointer-events: none; font-size: 0; }
+  .cw-sidebar:not(.collapsed) .cw-nav-item { padding: 10px 0; justify-content: center; gap: 0; }
+  .cw-sidebar:not(.collapsed) .cw-nav-item span { opacity: 0; max-width: 0; }
+  .cw-main:not(.nav-collapsed) { margin-left: 56px; }
 }

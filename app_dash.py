@@ -237,6 +237,8 @@ def nav_item(page_id: str, label: str, icon) -> html.Button:
         id={"type": "nav-btn", "page": page_id},
         className="cw-nav-item",
         n_clicks=0,
+        title=label,
+        **{"data-tooltip": label},
     )
 
 
@@ -259,6 +261,25 @@ _MOON_SVG = (
     '<path d="M13.5 9.5A6 6 0 016.5 2.5a6 6 0 100 11 6 6 0 007-4z"'
     ' stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>'
     '</svg>'
+)
+_CHEVRON_L_SVG = (
+    '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">'
+    '<path d="M9 11L5 7L9 3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>'
+    '</svg>'
+)
+
+app.clientside_callback(
+    """
+    function(collapsed) {
+        var sidebar = document.getElementById('cw-sidebar');
+        var main = document.querySelector('.cw-main');
+        if (sidebar) sidebar.classList.toggle('collapsed', !!collapsed);
+        if (main) main.classList.toggle('nav-collapsed', !!collapsed);
+        return window.dash_clientside.no_update;
+    }
+    """,
+    Output("nav-collapse-btn", "title"),
+    Input("nav-collapsed", "data"),
 )
 
 # Clientside callback: apply theme from store to document element (instant, no Python round-trip)
@@ -1313,7 +1334,16 @@ def datasources_layout() -> html.Div:
 _NAV_PAGES = ["overview", "payer", "appeal", "checker", "investigator", "datasources", "notify", "method"]
 
 sidebar = html.Nav([
-    html.Div("ClaimWise AI", className="cw-nav-brand"),
+    html.Div([
+        html.Div("ClaimWise AI", className="cw-nav-brand-text", id="cw-nav-brand-text"),
+        html.Button(
+            _icon(_CHEVRON_L_SVG),
+            id="nav-collapse-btn",
+            className="cw-nav-collapse-btn",
+            title="Collapse sidebar",
+            n_clicks=0,
+        ),
+    ], className="cw-nav-brand"),
     html.Div([
         html.Div("INSIGHTS", className="cw-nav-group-label"),
         nav_item("overview", "Overview", _OVERVIEW_ICON),
@@ -1349,6 +1379,7 @@ app.layout = html.Div([
     dcc.Store(id="theme-store", storage_type="local", data="light"),
     dcc.Store(id="ds-claims-result", storage_type="session", data=None),
     dcc.Store(id="ds-denials-result", storage_type="session", data=None),
+    dcc.Store(id="nav-collapsed", storage_type="local", data=False),
     sidebar,
     html.Div([
         topbar,
@@ -1384,6 +1415,16 @@ def update_theme_icon(theme):
 
 
 # ------------------------------------------------------------------------------ navigation callbacks
+@app.callback(
+    Output("nav-collapsed", "data"),
+    Input("nav-collapse-btn", "n_clicks"),
+    State("nav-collapsed", "data"),
+    prevent_initial_call=True,
+)
+def toggle_nav_collapsed(n, current):
+    return not bool(current)
+
+
 @app.callback(
     Output("nav-page", "data"),
     Input({"type": "nav-btn", "page": ALL}, "n_clicks"),
