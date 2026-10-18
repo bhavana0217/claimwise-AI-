@@ -13,7 +13,7 @@ import sys
 from pathlib import Path
 
 import pandas as pd
-from dash import Dash, Input, Output, State, ctx, dash_table, dcc, html
+from dash import ALL, Dash, Input, Output, State, ctx, dash_table, dcc, html, no_update
 from dash.dash_table.Format import Format, Group, Scheme, Symbol
 
 from src import plotly_charts as pc
@@ -154,8 +154,84 @@ def apply_status(df: pd.DataFrame, store: dict | None) -> pd.DataFrame:
     return out
 
 
+# ------------------------------------------------------------------------------ SVG icons (inline via dcc.Markdown dangerously_allow_html)
+def _icon(svg_str: str):
+    """Wrap a raw SVG string in a dcc.Markdown so it renders inline."""
+    return dcc.Markdown(svg_str, dangerously_allow_html=True,
+                        style={"display": "inline-flex", "alignItems": "center", "flexShrink": "0", "lineHeight": "0"})
+
+
+_OVERVIEW_ICON = _icon(
+    '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">'
+    '<rect x="1" y="1" width="6" height="6" rx="1" stroke="currentColor" stroke-width="1.5"/>'
+    '<rect x="9" y="1" width="6" height="6" rx="1" stroke="currentColor" stroke-width="1.5"/>'
+    '<rect x="1" y="9" width="6" height="6" rx="1" stroke="currentColor" stroke-width="1.5"/>'
+    '<rect x="9" y="9" width="6" height="6" rx="1" stroke="currentColor" stroke-width="1.5"/>'
+    '</svg>'
+)
+
+_PAYER_ICON = _icon(
+    '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">'
+    '<path d="M2 14V7L8 2L14 7V14" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>'
+    '<rect x="6" y="10" width="4" height="4" stroke="currentColor" stroke-width="1.5"/>'
+    '</svg>'
+)
+
+_APPEAL_ICON = _icon(
+    '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">'
+    '<path d="M3 4H13M3 8H10M3 12H8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>'
+    '</svg>'
+)
+
+_CHECKER_ICON = _icon(
+    '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">'
+    '<path d="M8 2L13 4V8C13 11 10.5 13.5 8 14C5.5 13.5 3 11 3 8V4L8 2Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>'
+    '<path d="M5.5 8L7 9.5L10.5 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>'
+    '</svg>'
+)
+
+_INVESTIGATOR_ICON = _icon(
+    '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">'
+    '<circle cx="7" cy="7" r="4.5" stroke="currentColor" stroke-width="1.5"/>'
+    '<path d="M10.5 10.5L14 14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>'
+    '</svg>'
+)
+
+_DATASOURCES_ICON = _icon(
+    '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">'
+    '<ellipse cx="8" cy="4" rx="5" ry="2" stroke="currentColor" stroke-width="1.5"/>'
+    '<path d="M3 4V8C3 9.1 5.24 10 8 10C10.76 10 13 9.1 13 8V4" stroke="currentColor" stroke-width="1.5"/>'
+    '<path d="M3 8V12C3 13.1 5.24 14 8 14C10.76 14 13 13.1 13 12V8" stroke="currentColor" stroke-width="1.5"/>'
+    '</svg>'
+)
+
+_NOTIFY_ICON = _icon(
+    '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">'
+    '<path d="M8 2C5.79 2 4 3.79 4 6V10L2 12H14L12 10V6C12 3.79 10.21 2 8 2Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>'
+    '<path d="M6.5 12C6.5 12.83 7.17 13.5 8 13.5C8.83 13.5 9.5 12.83 9.5 12" stroke="currentColor" stroke-width="1.5"/>'
+    '</svg>'
+)
+
+_METHOD_ICON = _icon(
+    '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">'
+    '<rect x="2" y="1" width="9" height="13" rx="1" stroke="currentColor" stroke-width="1.5"/>'
+    '<path d="M11 4H13C13.55 4 14 4.45 14 5V14C14 14.55 13.55 15 13 15H5" stroke="currentColor" stroke-width="1.5"/>'
+    '<path d="M5 5H8M5 8H8M5 11H7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>'
+    '</svg>'
+)
+
+
+def nav_item(page_id: str, label: str, icon) -> html.Button:
+    return html.Button(
+        [icon, html.Span(label)],
+        id={"type": "nav-btn", "page": page_id},
+        className="cw-nav-item",
+        n_clicks=0,
+    )
+
+
 # ------------------------------------------------------------------------------ app shell
-app = Dash(__name__, title="ClaimWise AI", suppress_callback_exceptions=False)
+app = Dash(__name__, title="ClaimWise AI", suppress_callback_exceptions=True)
 app.index_string = app.index_string.replace(
     "{%favicon%}", '<link rel="icon" type="image/png" href="/assets/favicon.png">'
 )
@@ -877,36 +953,115 @@ def method_layout() -> html.Div:
     ])
 
 
+# ------------------------------------------------------------------------------ data sources placeholder
+def datasources_layout() -> html.Div:
+    return html.Div([
+        html.H3("Data sources"),
+        html.Div([
+            html.B("Data sources — coming soon. "),
+            "Use bundled demo data for now.",
+        ], className="cw-demo"),
+        html.Div([
+            html.H4("Currently loaded data"),
+            kpi_row([
+                ("Insurance claims", f"{len(CLAIMS):,}"),
+                ("Self-pay rows excluded", f"{CLAIMS_INFO['self_pay_excluded']:,}"),
+                ("Data as of", f"{AS_OF:%b %d, %Y}"),
+            ]),
+            html.Div(
+                f"{len(CLAIMS):,} insurance claims loaded from the bundled demo dataset. "
+                f"{CLAIMS_INFO['self_pay_excluded']:,} self-pay rows were excluded (not insurance claims). "
+                f"Latest denial date in the file: {AS_OF:%b %d, %Y}.",
+                className="caption",
+            ),
+        ], className="card"),
+    ])
+
+
+# ------------------------------------------------------------------------------ navigation sidebar
+_NAV_PAGES = ["overview", "payer", "appeal", "checker", "investigator", "datasources", "notify", "method"]
+
+sidebar = html.Nav([
+    html.Div("ClaimWise AI", className="cw-nav-brand"),
+    html.Div([
+        html.Div("INSIGHTS", className="cw-nav-group-label"),
+        nav_item("overview", "Overview", _OVERVIEW_ICON),
+        nav_item("payer", "Payer alerts", _PAYER_ICON),
+        html.Div("WORK", className="cw-nav-group-label"),
+        nav_item("appeal", "Appeal queue", _APPEAL_ICON),
+        nav_item("checker", "Claim checker", _CHECKER_ICON),
+        nav_item("investigator", "AI Investigator", _INVESTIGATOR_ICON),
+        html.Div("ADMINISTRATION", className="cw-nav-group-label"),
+        nav_item("datasources", "Data sources", _DATASOURCES_ICON),
+        nav_item("notify", "Notifications", _NOTIFY_ICON),
+        nav_item("method", "Method & limits", _METHOD_ICON),
+    ], id="cw-nav-links"),
+], className="cw-sidebar", id="cw-sidebar")
+
+topbar = html.Div([
+    html.Div([
+        html.Span(f"{len(CLAIMS):,} claims", style={"fontWeight": "600"}),
+        html.Span(f"data as of {AS_OF:%b %-d, %Y}", style={}),
+    ], className="cw-topbar-meta"),
+    html.Span("IBM LinuxONE", className="cw-linuxone-badge"),
+    html.Span("Synthetic demo data", className="cw-demo-pill"),
+    html.Button(id="theme-toggle-btn", className="cw-theme-btn",
+                children="☀", title="Toggle theme",
+                style={"background": "none", "border": "none", "cursor": "pointer", "fontSize": "18px", "padding": "4px 8px"}),
+], className="cw-topbar")
+
 # ------------------------------------------------------------------------------ layout
-def tab(label: str, value: str, content) -> dcc.Tab:
-    return dcc.Tab(label=label, value=value, className="tab", selected_className="tab--selected", children=[html.Div(content, style={"paddingTop": "10px"})])
-
-
 app.layout = html.Div([
     dcc.Store(id="status-apl", storage_type="session", data={}),
     dcc.Store(id="status-chk", storage_type="session", data={}),
     dcc.Store(id="sim-updates", storage_type="session", data=[]),
+    dcc.Store(id="nav-page", storage_type="session", data="overview"),
+    dcc.Store(id="theme-store", storage_type="local", data="light"),
+    sidebar,
     html.Div([
-        html.Div(html.Img(src="/assets/favicon.png", style={"width": "34px", "height": "34px"}), className="cw-logo"),
-        html.Div([html.Div("ClaimWise AI", className="cw-title"),
-                  html.Div("Revenue cycle review assistant for hospital billing teams", className="cw-sub")]),
-        html.Div("Synthetic demo data", className="cw-pill"),
-    ], className="cw-header"),
-    html.Div([html.B("Decision support only. "), "Results need human review and are not a substitute for payer policy verification. "
-              "A flag is not a determination that a claim will be denied or paid, and “billed value requiring review” is an "
-              "estimate, not a guaranteed financial loss."], className="cw-notice"),
-    html.Div(f"{len(CLAIMS):,} insurance claims loaded · {CLAIMS_INFO['self_pay_excluded']:,} self-pay rows excluded (not insurance "
-             f"claims) · data as of {AS_OF:%b %d, %Y} (latest denial date in the file)", className="caption"),
-    dcc.Tabs(id="tabs", value="overview", children=[
-        tab("Overview", "overview", overview_layout()),
-        tab("Appeal & rework queue", "appeal", appeal_layout()),
-        tab("Claim checker", "checker", checker_layout()),
-        tab("Payer alerts", "payer", payer_layout()),
-        tab("Notifications", "notify", notifications_layout()),
-        tab("AI Investigator", "investigator", investigator_layout()),
-        tab("Method & limits", "method", method_layout()),
-    ]),
-], className="page")
+        topbar,
+        html.Div(id="cw-page-content", className="cw-page-content"),
+        html.Div(
+            "Decision support only. Results need human review and are not a substitute for payer policy verification. "
+            "A flag is not a determination that a claim will be denied or paid.",
+            className="cw-footer-disclaimer",
+        ),
+    ], className="cw-main"),
+], className="cw-shell")
+
+
+# ------------------------------------------------------------------------------ navigation callbacks
+@app.callback(
+    Output("nav-page", "data"),
+    Input({"type": "nav-btn", "page": ALL}, "n_clicks"),
+    prevent_initial_call=True,
+)
+def navigate(n_clicks):
+    triggered = ctx.triggered_id
+    if triggered:
+        return triggered["page"]
+    return no_update
+
+
+@app.callback(
+    Output("cw-page-content", "children"),
+    Output({"type": "nav-btn", "page": ALL}, "className"),
+    Input("nav-page", "data"),
+)
+def render_page(page):
+    pages = {
+        "overview": overview_layout,
+        "payer": payer_layout,
+        "appeal": appeal_layout,
+        "checker": checker_layout,
+        "investigator": investigator_layout,
+        "datasources": datasources_layout,
+        "notify": notifications_layout,
+        "method": method_layout,
+    }
+    classes = ["cw-nav-item cw-nav-active" if p == page else "cw-nav-item" for p in _NAV_PAGES]
+    content = pages.get(page, overview_layout)()
+    return content, classes
 
 
 if __name__ == "__main__":
