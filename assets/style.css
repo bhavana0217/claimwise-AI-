@@ -353,6 +353,34 @@ input[type=text], input[type=number], textarea {
 /* ============================================================
    SIDEBAR
    ============================================================ */
+/* ============================================================
+   CSS MASK ICONS — inherits current text color in any theme
+   ============================================================ */
+.cw-icon {
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  background-color: currentColor;
+  -webkit-mask: var(--icon) center/contain no-repeat;
+          mask: var(--icon) center/contain no-repeat;
+  vertical-align: middle;
+}
+.cw-icon-overview        { --icon: url("/assets/icons/overview.svg"); }
+.cw-icon-payer-alerts    { --icon: url("/assets/icons/payer-alerts.svg"); }
+.cw-icon-appeal-queue    { --icon: url("/assets/icons/appeal-queue.svg"); }
+.cw-icon-claim-checker   { --icon: url("/assets/icons/claim-checker.svg"); }
+.cw-icon-ai-investigator { --icon: url("/assets/icons/ai-investigator.svg"); }
+.cw-icon-data-sources    { --icon: url("/assets/icons/data-sources.svg"); }
+.cw-icon-notifications   { --icon: url("/assets/icons/notifications.svg"); }
+.cw-icon-how-it-works    { --icon: url("/assets/icons/how-it-works.svg"); }
+.cw-icon-chevron-left    { --icon: url("/assets/icons/chevron-left.svg"); }
+.cw-icon-sun             { --icon: url("/assets/icons/sun.svg"); }
+.cw-icon-moon            { --icon: url("/assets/icons/moon.svg"); }
+
+/* logo-mark is a colored img, not a mask icon */
+.cw-logo-mark { display: block; flex-shrink: 0; }
+
 .cw-sidebar {
   width: 260px;
   min-height: 100vh;
@@ -395,23 +423,33 @@ input[type=text], input[type=number], textarea {
   max-width: 160px;
 }
 .cw-nav-collapse-btn {
-  background: none;
-  border: none;
-  color: rgba(255,255,255,0.5);
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.14);
+  color: rgba(255,255,255,0.55);
   cursor: pointer;
-  padding: 5px;
-  border-radius: var(--r-md);
+  padding: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
   /* 200ms matches sidebar width + main margin-left transitions */
-  transition: background 150ms ease, color 150ms ease, transform 200ms cubic-bezier(0.4,0,0.2,1);
+  transition: background 150ms ease, color 150ms ease, border-color 150ms ease,
+              transform 200ms cubic-bezier(0.4,0,0.2,1);
   font-family: inherit;
   line-height: 0;
 }
-.cw-nav-collapse-btn:hover { background: rgba(255,255,255,0.12); color: #fff; }
-.cw-nav-collapse-btn:focus-visible { outline: 2px solid var(--sidebar-active-border); outline-offset: 2px; }
+.cw-nav-collapse-btn:hover {
+  background: rgba(255,255,255,0.14);
+  border-color: rgba(255,255,255,0.28);
+  color: #fff;
+}
+.cw-nav-collapse-btn:focus-visible {
+  outline: 2px solid var(--sidebar-active-border);
+  outline-offset: 2px;
+}
 .cw-nav-group-label {
   padding: 16px 16px 4px 16px;
   font-size: 0.68rem;
@@ -459,7 +497,7 @@ input[type=text], input[type=number], textarea {
   font-weight: 600;
   box-shadow: inset 3px 0 8px rgba(10,107,99,0.15);
 }
-.cw-nav-item svg { flex-shrink: 0; }
+.cw-nav-item .cw-icon { flex-shrink: 0; }
 /* max-width drives the label slide-out; opacity softens it */
 .cw-nav-item span {
   white-space: nowrap;
@@ -577,9 +615,9 @@ input[type=text], input[type=number], textarea {
 .cw-theme-btn {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
   height: 32px;
-  padding: 0 12px 0 9px;
+  padding: 0 13px 0 10px;
   border-radius: var(--r-pill);
   background: var(--bg-subtle);
   border: 1.5px solid var(--border-strong);
@@ -593,6 +631,7 @@ input[type=text], input[type=number], textarea {
   flex-shrink: 0;
   line-height: 1;
 }
+.cw-theme-btn .cw-icon { width: 16px; height: 16px; }
 .cw-theme-btn:hover {
   background: var(--bg-hover);
   color: var(--text-primary);

@@ -272,71 +272,20 @@ def apply_status(df: pd.DataFrame, store: dict | None) -> pd.DataFrame:
     return out
 
 
-# ------------------------------------------------------------------------------ SVG icons (inline via dcc.Markdown dangerously_allow_html)
-def _icon(svg_str: str):
-    """Wrap a raw SVG string in a dcc.Markdown so it renders inline."""
-    return dcc.Markdown(svg_str, dangerously_allow_html=True,
-                        style={"display": "inline-flex", "alignItems": "center", "flexShrink": "0", "lineHeight": "0"})
+# ------------------------------------------------------------------------------ CSS mask icons (assets/icons/*.svg served by Dash)
+def _icon(name: str) -> html.Span:
+    """Return a span that renders as a CSS-mask icon, inheriting the current text color."""
+    return html.Span(className=f"cw-icon cw-icon-{name}")
 
 
-_OVERVIEW_ICON = _icon(
-    '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">'
-    '<rect x="1" y="1" width="6" height="6" rx="1" stroke="currentColor" stroke-width="1.5"/>'
-    '<rect x="9" y="1" width="6" height="6" rx="1" stroke="currentColor" stroke-width="1.5"/>'
-    '<rect x="1" y="9" width="6" height="6" rx="1" stroke="currentColor" stroke-width="1.5"/>'
-    '<rect x="9" y="9" width="6" height="6" rx="1" stroke="currentColor" stroke-width="1.5"/>'
-    '</svg>'
-)
-
-_PAYER_ICON = _icon(
-    '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">'
-    '<path d="M2 14V7L8 2L14 7V14" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>'
-    '<rect x="6" y="10" width="4" height="4" stroke="currentColor" stroke-width="1.5"/>'
-    '</svg>'
-)
-
-_APPEAL_ICON = _icon(
-    '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">'
-    '<path d="M3 4H13M3 8H10M3 12H8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>'
-    '</svg>'
-)
-
-_CHECKER_ICON = _icon(
-    '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">'
-    '<path d="M8 2L13 4V8C13 11 10.5 13.5 8 14C5.5 13.5 3 11 3 8V4L8 2Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>'
-    '<path d="M5.5 8L7 9.5L10.5 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>'
-    '</svg>'
-)
-
-_INVESTIGATOR_ICON = _icon(
-    '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">'
-    '<circle cx="7" cy="7" r="4.5" stroke="currentColor" stroke-width="1.5"/>'
-    '<path d="M10.5 10.5L14 14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>'
-    '</svg>'
-)
-
-_DATASOURCES_ICON = _icon(
-    '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">'
-    '<ellipse cx="8" cy="4" rx="5" ry="2" stroke="currentColor" stroke-width="1.5"/>'
-    '<path d="M3 4V8C3 9.1 5.24 10 8 10C10.76 10 13 9.1 13 8V4" stroke="currentColor" stroke-width="1.5"/>'
-    '<path d="M3 8V12C3 13.1 5.24 14 8 14C10.76 14 13 13.1 13 12V8" stroke="currentColor" stroke-width="1.5"/>'
-    '</svg>'
-)
-
-_NOTIFY_ICON = _icon(
-    '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">'
-    '<path d="M8 2C5.79 2 4 3.79 4 6V10L2 12H14L12 10V6C12 3.79 10.21 2 8 2Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>'
-    '<path d="M6.5 12C6.5 12.83 7.17 13.5 8 13.5C8.83 13.5 9.5 12.83 9.5 12" stroke="currentColor" stroke-width="1.5"/>'
-    '</svg>'
-)
-
-_METHOD_ICON = _icon(
-    '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">'
-    '<rect x="2" y="1" width="9" height="13" rx="1" stroke="currentColor" stroke-width="1.5"/>'
-    '<path d="M11 4H13C13.55 4 14 4.45 14 5V14C14 14.55 13.55 15 13 15H5" stroke="currentColor" stroke-width="1.5"/>'
-    '<path d="M5 5H8M5 8H8M5 11H7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>'
-    '</svg>'
-)
+_OVERVIEW_ICON     = _icon("overview")
+_PAYER_ICON        = _icon("payer-alerts")
+_APPEAL_ICON       = _icon("appeal-queue")
+_CHECKER_ICON      = _icon("claim-checker")
+_INVESTIGATOR_ICON = _icon("ai-investigator")
+_DATASOURCES_ICON  = _icon("data-sources")
+_NOTIFY_ICON       = _icon("notifications")
+_METHOD_ICON       = _icon("how-it-works")
 
 
 def nav_item(page_id: str, label: str, icon) -> html.Button:
@@ -357,24 +306,6 @@ app.index_string = app.index_string.replace(
 )
 server = app.server
 
-_SUN_SVG = (
-    '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">'
-    '<circle cx="8" cy="8" r="3" stroke="currentColor" stroke-width="1.5"/>'
-    '<path d="M8 1V3M8 13V15M1 8H3M13 8H15M3.05 3.05L4.46 4.46M11.54 11.54L12.95 12.95'
-    'M12.95 3.05L11.54 4.46M4.46 11.54L3.05 12.95" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>'
-    '</svg>'
-)
-_MOON_SVG = (
-    '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">'
-    '<path d="M13.5 9.5A6 6 0 016.5 2.5a6 6 0 100 11 6 6 0 007-4z"'
-    ' stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>'
-    '</svg>'
-)
-_CHEVRON_L_SVG = (
-    '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">'
-    '<path d="M9 11L5 7L9 3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>'
-    '</svg>'
-)
 
 # Restore collapsed state on page load (reads persisted store, applies class to root instantly)
 app.clientside_callback(
@@ -2005,24 +1936,15 @@ def datasources_layout() -> html.Div:
 # ------------------------------------------------------------------------------ navigation sidebar
 _NAV_PAGES = ["overview", "payer", "appeal", "checker", "investigator", "datasources", "notify", "method"]
 
-_LOGO_MARK_SVG = (
-    '<svg width="28" height="28" viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">'
-    '<rect width="28" height="28" rx="7" fill="#0A6B63"/>'
-    '<path d="M9 14C9 11.24 11.24 9 14 9C15.66 9 17.13 9.82 18.04 11.07" '
-    'stroke="white" stroke-width="1.8" stroke-linecap="round"/>'
-    '<circle cx="14" cy="14" r="3" stroke="white" stroke-width="1.8"/>'
-    '<path d="M16.5 16.5L19.5 19.5" stroke="white" stroke-width="1.8" stroke-linecap="round"/>'
-    '</svg>'
-)
-
 sidebar = html.Nav([
     html.Div([
         html.Div([
-            _icon(_LOGO_MARK_SVG),
+            html.Img(src="/assets/icons/logo-mark.svg", width=28, height=28,
+                     alt="ClaimWise AI logo", className="cw-logo-mark"),
             html.Span("ClaimWise AI", className="cw-nav-brand-text"),
         ], className="cw-logo-area"),
         html.Button(
-            _icon(_CHEVRON_L_SVG),
+            html.Span(className="cw-icon cw-icon-chevron-left"),
             id="nav-collapse-btn",
             className="cw-nav-collapse-btn",
             title="Collapse navigation",
@@ -2055,7 +1977,7 @@ topbar = html.Div([
     html.Button(
         id="theme-toggle-btn",
         className="cw-theme-btn",
-        children=[_icon(_SUN_SVG), html.Span("Light", className="cw-theme-label")],
+        children=[html.Span(className="cw-icon cw-icon-sun"), html.Span("Light", className="cw-theme-label")],
         title="Switch to dark mode",
         **{"aria-label": "Switch theme"},
     ),
@@ -2101,8 +2023,8 @@ def toggle_theme(n, current):
 )
 def update_theme_icon(theme):
     if theme == "dark":
-        return [_icon(_MOON_SVG), html.Span("Dark", className="cw-theme-label")]
-    return [_icon(_SUN_SVG), html.Span("Light", className="cw-theme-label")]
+        return [html.Span(className="cw-icon cw-icon-moon"), html.Span("Dark", className="cw-theme-label")]
+    return [html.Span(className="cw-icon cw-icon-sun"), html.Span("Light", className="cw-theme-label")]
 
 
 # ------------------------------------------------------------------------------ navigation callbacks
