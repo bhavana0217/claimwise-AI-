@@ -497,21 +497,32 @@ input[type=text], input[type=number], textarea {
 .cw-theme-btn {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  width: 32px;
+  gap: 5px;
   height: 32px;
-  border-radius: var(--r-md);
-  background: none;
-  border: 1px solid var(--border);
-  color: var(--text-muted);
+  padding: 0 12px 0 9px;
+  border-radius: var(--r-pill);
+  background: var(--bg-subtle);
+  border: 1.5px solid var(--border-strong);
+  color: var(--text-secondary);
   cursor: pointer;
-  transition: background var(--ease), color var(--ease);
-  padding: 0;
+  font-size: 0.8rem;
+  font-weight: 600;
+  font-family: inherit;
+  transition: background var(--ease), color var(--ease), border-color var(--ease);
+  white-space: nowrap;
+  flex-shrink: 0;
+  line-height: 1;
 }
 .cw-theme-btn:hover {
   background: var(--bg-hover);
   color: var(--text-primary);
+  border-color: var(--teal-600);
 }
+.cw-theme-btn:focus-visible {
+  outline: 2px solid var(--teal-600);
+  outline-offset: 2px;
+}
+.cw-theme-label { pointer-events: none; }
 
 /* ============================================================
    PAGE CONTENT

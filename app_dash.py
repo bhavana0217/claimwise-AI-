@@ -287,7 +287,7 @@ app.clientside_callback(
     """
     function(theme) {
         document.documentElement.setAttribute('data-theme', theme || 'light');
-        return window.dash_clientside.no_update;
+        return theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode';
     }
     """,
     Output("theme-toggle-btn", "title"),
@@ -1366,8 +1366,13 @@ topbar = html.Div([
     ], className="cw-topbar-meta"),
     html.Span("IBM LinuxONE", className="cw-linuxone-badge"),
     html.Span("Synthetic demo data", className="cw-demo-pill"),
-    html.Button(id="theme-toggle-btn", className="cw-theme-btn",
-                children=_icon(_SUN_SVG), title="Toggle theme"),
+    html.Button(
+        id="theme-toggle-btn",
+        className="cw-theme-btn",
+        children=[_icon(_SUN_SVG), html.Span("Light", className="cw-theme-label")],
+        title="Switch to dark mode",
+        **{"aria-label": "Switch theme"},
+    ),
 ], className="cw-topbar")
 
 # ------------------------------------------------------------------------------ layout
@@ -1410,8 +1415,8 @@ def toggle_theme(n, current):
 )
 def update_theme_icon(theme):
     if theme == "dark":
-        return _icon(_MOON_SVG)
-    return _icon(_SUN_SVG)
+        return [_icon(_MOON_SVG), html.Span("Dark", className="cw-theme-label")]
+    return [_icon(_SUN_SVG), html.Span("Light", className="cw-theme-label")]
 
 
 # ------------------------------------------------------------------------------ navigation callbacks
