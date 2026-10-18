@@ -76,6 +76,16 @@ def kpi_row(items: list[tuple[str, str]]) -> html.Div:
     return html.Div([kpi(a, b) for a, b in items], className="kpi-row")
 
 
+def page_header(title: str, desc: str = "", notice: html.Div | None = None) -> html.Div:
+    """Consistent page title + optional caption + optional banner notice."""
+    children: list = [html.H3(title, style={"margin": "0 0 4px"})]
+    if desc:
+        children.append(html.Div(desc, className="caption"))
+    if notice:
+        children.append(html.Div(notice, style={"marginTop": "10px"}))
+    return html.Div(children, style={"marginBottom": "20px"})
+
+
 def badge(level: str) -> html.Span:
     return html.Span(level, className=f"badge {level.lower()}")
 
@@ -274,30 +284,38 @@ def overview_layout() -> html.Div:
         if len(monthly) and monthly["is_partial"].any() else ""
     )
     return html.Div([
-        html.H3("Denial history"),
+        page_header(
+            "Denial history",
+            f"{ds['insurance_claims']:,} insurance claims · "
+            f"{ds['denied_claims']:,} denied ({ds['denial_rate_pct']:.1f}%) · "
+            f"{asum['open_count']:,} open denials to work",
+        ),
         kpi_row([
             ("Insurance claims", f"{ds['insurance_claims']:,}"),
             ("Total billed", money(ds["total_billed"])),
-            (f"Denied claims ({ds['denial_rate_pct']:.1f}% of claims)", f"{ds['denied_claims']:,}"),
+            (f"Denied ({ds['denial_rate_pct']:.1f}% of claims)", f"{ds['denied_claims']:,}"),
             ("Denied amount", money(ds["denied_amount"])),
             ("Open denials to work", f"{asum['open_count']:,}"),
             ("Open denied value (est.)", money(asum["open_value"])),
-            ("Recovered on appeal (history)", money(asum["recovered_value"])),
-            ("Written off (history)", money(asum["written_off_value"])),
+            ("Recovered on appeal", money(asum["recovered_value"])),
+            ("Written off", money(asum["written_off_value"])),
         ]),
         html.Div(
-            f"Of {asum['recovered_count'] + asum['written_off_count']:,} appeals with a final result, "
-            f"{asum['resolved_appeal_win_rate_pct']:.1f}% were approved. This describes this dataset only and is not a forecast. "
-            "Open denied value is an estimate of what is still recoverable, not a guarantee.",
-            className="caption"),
-        html.Div([
-            dcc.Graph(id="overview-stage-chart", figure={}, config=GRAPH_CONFIG),
-            dcc.Graph(id="overview-reason-chart", figure={}, config=GRAPH_CONFIG),
-            html.Div([dcc.Graph(id="overview-payer-chart", figure={}, config=GRAPH_CONFIG),
-                      html.Div("Dashed line = overall denial rate. Payers differ only slightly in this dataset.", className="caption")]),
-            html.Div([dcc.Graph(id="overview-monthly-chart", figure={}, config=GRAPH_CONFIG) if len(monthly) else html.Div("No denial dates to chart."),
-                      html.Div(partial_note, className="caption")]),
-        ], className="chart-row"),
+            f"Of {asum['recovered_count'] + asum['written_off_count']:,} resolved appeals, "
+            f"{asum['resolved_appeal_win_rate_pct']:.1f}% were approved. "
+            "Open denied value is an estimate, not a guarantee.",
+            className="caption", style={"marginBottom": "16px"}),
+        dcc.Loading(
+            html.Div([
+                dcc.Graph(id="overview-stage-chart", figure={}, config=GRAPH_CONFIG),
+                dcc.Graph(id="overview-reason-chart", figure={}, config=GRAPH_CONFIG),
+                html.Div([dcc.Graph(id="overview-payer-chart", figure={}, config=GRAPH_CONFIG),
+                          html.Div("Dashed line = overall denial rate.", className="caption")]),
+                html.Div([dcc.Graph(id="overview-monthly-chart", figure={}, config=GRAPH_CONFIG) if len(monthly) else html.Div("No denial dates to chart."),
+                          html.Div(partial_note, className="caption")]),
+            ], className="chart-row"),
+            type="circle", color="var(--teal-600)",
+        ),
     ])
 
 
@@ -340,9 +358,11 @@ def appeal_layout() -> html.Div:
                text_col("Denial stage", "work_status"), int_col("Priority", "priority_score"),
                text_col("Level", "priority_level"), STATUS_COL]
     return html.Div([
-        html.H3("Appeal & rework queue"),
-        html.Div("Denied claims ranked for human follow-up by amount, appeal stage and time since denial. "
-                 "Click the circle at the left of a row to see details below. " + GUIDANCE_DISCLAIMER, className="caption"),
+        page_header(
+            "Appeal & rework queue",
+            "Denied claims ranked for human follow-up by amount, appeal stage, and days since denial. "
+            "Click the circle at the left of a row to see details below. " + GUIDANCE_DISCLAIMER,
+        ),
         html.Div("Filter by", className="field-label"),
         dcc.RadioItems(id="apl-dim", options=list(APL_DIMS), value="Denial stage", inline=True,
                        inputStyle={"marginLeft": "14px", "marginRight": "5px"}),
@@ -435,9 +455,11 @@ def checker_layout() -> html.Div:
                int_col("Risk score", "risk_score"), text_col("Level", "risk_level"), text_col("Finding", "finding_type"),
                text_col("Confirmed issues", "confirmed_issues"), text_col("Risk indicators", "risk_indicators"), STATUS_COL]
     return html.Div([
-        html.H3("Claim checker (rules-based)"),
-        html.Div("Finds confirmed data issues (facts in the record) and risk indicators (patterns linked to denials, "
-                 "not predictions). No machine learning is used.", className="caption"),
+        page_header(
+            "Claim checker",
+            "Finds confirmed data issues (facts in the record) and risk indicators (patterns linked to denials, "
+            "not predictions). No machine learning is used.",
+        ),
         html.Div("Claims to check", className="field-label"),
         dcc.RadioItems(id="chk-source", options=[{"label": "Loaded dataset", "value": "main"},
                                                  {"label": "Synthetic demo set (defects added on purpose)", "value": "demo"}],
@@ -592,10 +614,13 @@ def payer_layout() -> html.Div:
                int_col("Open denials affected", "open_denials_affected"), money_col("Open value affected", "open_value_affected"),
                int_col("Past denials, same payer and codes", "historical_denials_same_codes")]
     return html.Div([
-        html.H3("Payer rule-change alerts"),
-        html.Div([html.B("Demo feed. "), "These updates are synthetic examples, not real payer notices, and they are read from a "
-                  "local file, not in real time. In production this table would be filled from payer bulletins. Impact numbers "
-                  "are real calculations on the loaded denial data."], className="cw-demo"),
+        page_header(
+            "Payer rule-change alerts",
+            "Track payer policy changes and see which open denials they affect.",
+            html.Div([html.B("Demo feed. "), "These updates are synthetic examples, not real payer notices. "
+                      "Impact numbers are real calculations on the loaded denial data."],
+                     className="cw-demo"),
+        ),
         html.Div(id="alert-kpis"),
         make_table("alert-table", columns, level_styles("severity"), page_size=8, with_status=False),
         html.Div(id="alert-detail"),
@@ -1060,11 +1085,13 @@ def _trace_card(entry: dict) -> html.Div:
 def investigator_layout() -> html.Div:
     claim_ids = sorted(QUEUE["claim_id"].dropna().unique())
     return html.Div([
-        html.H3("AI Investigator (experimental)"),
-        html.Div([
-            html.B("Experimental"),
-            " \u2014 requires OPENAI_API_KEY. Results are AI-generated and require human review.",
-        ], className="cw-demo"),
+        page_header(
+            "AI Investigator",
+            "Gathers evidence from claim data using AI-assisted tool calls. Results require human review.",
+            html.Div([html.B("Experimental \u2014 "),
+                      "requires OPENAI_API_KEY. Never discloses PHI. Not a denial prediction."],
+                     className="cw-demo"),
+        ),
         html.Div("Select a claim from the appeal queue", className="field-label"),
         dcc.Dropdown(
             id="inv-claim-dropdown",
@@ -1156,7 +1183,8 @@ def method_layout() -> html.Div:
     band_df = denial_rate_by_amount_band(MERGED).rename(
         columns={"billed_amount_band": "Billed amount band", "claims": "Claims", "denial_rate_pct": "Denial rate (%)"})
     return html.Div([
-        html.H3("How it works, and what it does not do"),
+        page_header("Method & limits",
+                    "How the risk engine and investigation tools work, and what they cannot determine."),
         html.H4("Where the cut-offs and weights come from"),
         html.Div([html.B("The risk levels, rule weights and review threshold are design choices made by our team for this prototype. "),
                   "They are not taken from an industry standard, a payer policy or a published model, and they have not been "
