@@ -752,6 +752,124 @@ def notify_send(_, recipients, events, hp_min, ov_limit, ck_min, sim):
     return html.Div(result.message + saved, className="cw-ok" if result.sent else "cw-warn")
 
 
+# ------------------------------------------------------------------------------ data sources callbacks
+
+def _decode_upload(contents: str) -> "io.StringIO":
+    """Decode a dcc.Upload base-64 payload and return a StringIO."""
+    import base64, io as _io
+    _header, b64 = contents.split(",", 1)
+    decoded = base64.b64decode(b64).decode("utf-8", errors="replace")
+    return _io.StringIO(decoded)
+
+
+def _result_ui(filename: str, ok: bool, stats: dict, errors: list[str]) -> html.Div:
+    """Render a compact validation result card."""
+    if not ok:
+        return html.Div([
+            html.Div([
+                html.Span("Schema error", style={"fontWeight": "700", "color": "#991B1B", "fontSize": "13px"}),
+                html.Span(f" — {filename}", style={"color": "var(--text-muted)", "fontSize": "13px"}),
+            ]),
+            html.Ul([html.Li(e, style={"fontSize": "13px", "color": "#991B1B"}) for e in errors],
+                    style={"margin": "6px 0 0 0", "paddingLeft": "18px"}),
+        ], style={"background": "var(--high-bg, #FEF2F2)", "border": "1px solid #FECACA",
+                  "borderRadius": "6px", "padding": "10px 12px"})
+
+    stat_items = []
+    for k, v in stats.items():
+        label = k.replace("_", " ").capitalize()
+        stat_items.append(html.Div([
+            html.Span(label + ": ", style={"color": "var(--text-muted)", "fontSize": "13px"}),
+            html.Span(f"{v:,}" if isinstance(v, int) else str(v),
+                      style={"fontWeight": "600", "fontSize": "13px", "color": "var(--text-primary)"}),
+        ], style={"marginBottom": "3px"}))
+    return html.Div([
+        html.Div([
+            html.Span("Valid", style={"fontWeight": "700", "color": "#166534", "fontSize": "13px"}),
+            html.Span(f" — {filename}", style={"color": "var(--text-muted)", "fontSize": "13px"}),
+        ], style={"marginBottom": "8px"}),
+        *stat_items,
+    ], style={"background": "var(--clean-bg, #F0FDF4)", "border": "1px solid #BBF7D0",
+              "borderRadius": "6px", "padding": "10px 12px"})
+
+
+@app.callback(
+    Output("ds-claims-result", "data"),
+    Input("ds-claims-upload", "contents"),
+    State("ds-claims-upload", "filename"),
+    Input("ds-restore-btn", "n_clicks"),
+    prevent_initial_call=True,
+)
+def validate_claims_upload(contents, filename, _restore):
+    from src.claims_processor import SchemaError, load_claims
+    if ctx.triggered_id == "ds-restore-btn":
+        return None
+    if not contents:
+        return None
+    try:
+        src = _decode_upload(contents)
+        claims, info = load_claims(src)
+        return {"ok": True, "filename": filename or "file",
+                "stats": {"Rows read": info["rows_read"],
+                           "Self-pay excluded": info["self_pay_excluded"],
+                           "Insurance claims loaded": len(claims)},
+                "errors": []}
+    except SchemaError as exc:
+        return {"ok": False, "filename": filename or "file", "stats": {}, "errors": [str(exc)]}
+    except Exception as exc:
+        return {"ok": False, "filename": filename or "file", "stats": {}, "errors": ["Unexpected error: " + str(exc)]}
+
+
+@app.callback(
+    Output("ds-denials-result", "data"),
+    Input("ds-denials-upload", "contents"),
+    State("ds-denials-upload", "filename"),
+    Input("ds-restore-btn", "n_clicks"),
+    prevent_initial_call=True,
+)
+def validate_denials_upload(contents, filename, _restore):
+    from src.claims_processor import SchemaError, load_denials
+    if ctx.triggered_id == "ds-restore-btn":
+        return None
+    if not contents:
+        return None
+    try:
+        src = _decode_upload(contents)
+        denials, info = load_denials(src)
+        extras = {}
+        if info.get("denial_rows_without_claim_id"):
+            extras["Rows missing claim ID (dropped)"] = info["denial_rows_without_claim_id"]
+        if info.get("duplicate_denial_rows_dropped"):
+            extras["Duplicate rows dropped"] = info["duplicate_denial_rows_dropped"]
+        stats = {"Rows read": info["rows_read"], "Denial records loaded": len(denials)}
+        stats.update(extras)
+        return {"ok": True, "filename": filename or "file", "stats": stats, "errors": []}
+    except SchemaError as exc:
+        return {"ok": False, "filename": filename or "file", "stats": {}, "errors": [str(exc)]}
+    except Exception as exc:
+        return {"ok": False, "filename": filename or "file", "stats": {}, "errors": ["Unexpected error: " + str(exc)]}
+
+
+@app.callback(
+    Output("ds-claims-result-ui", "children"),
+    Input("ds-claims-result", "data"),
+)
+def render_claims_result(data):
+    if not data:
+        return None
+    return _result_ui(data["filename"], data["ok"], data["stats"], data["errors"])
+
+
+@app.callback(
+    Output("ds-denials-result-ui", "children"),
+    Input("ds-denials-result", "data"),
+)
+def render_denials_result(data):
+    if not data:
+        return None
+    return _result_ui(data["filename"], data["ok"], data["stats"], data["errors"])
+
+
 # ------------------------------------------------------------------------------ AI investigator
 
 _TOOL_LABELS = {
@@ -1008,27 +1126,94 @@ def method_layout() -> html.Div:
 
 
 # ------------------------------------------------------------------------------ data sources placeholder
+_UPLOAD_STYLE = {
+    "width": "100%", "minHeight": "90px", "border": "2px dashed var(--border)",
+    "borderRadius": "8px", "display": "flex", "alignItems": "center",
+    "justifyContent": "center", "cursor": "pointer", "padding": "16px",
+    "background": "var(--bg-subtle)", "boxSizing": "border-box",
+}
+
+
+def _upload_zone(upload_id: str, label: str) -> html.Div:
+    return dcc.Upload(
+        id=upload_id,
+        children=html.Div([
+            html.Span("Drag and drop or ", style={"color": "var(--text-muted)", "fontSize": "14px"}),
+            html.Span("browse", style={"color": "var(--teal-600)", "fontWeight": "600",
+                                       "fontSize": "14px", "textDecoration": "underline"}),
+            html.Div(label, style={"fontSize": "12px", "color": "var(--text-muted)", "marginTop": "4px"}),
+        ], style={"textAlign": "center"}),
+        style=_UPLOAD_STYLE,
+        accept=".csv",
+        multiple=False,
+    )
+
+
 def datasources_layout() -> html.Div:
     return html.Div([
-        html.H3("Data sources"),
         html.Div([
-            html.B("Data sources — coming soon. "),
-            "Use bundled demo data for now.",
-        ], className="cw-demo"),
+            html.H3("Data sources", style={"margin": "0 0 4px"}),
+            html.Div(
+                "Upload your own CSV files to validate their schema and preview load statistics. "
+                "The running app uses the bundled synthetic demo data; uploaded files are validated "
+                "here only and do not replace the live dataset.",
+                className="caption",
+            ),
+        ], style={"marginBottom": "20px"}),
+
+        # Currently loaded card
         html.Div([
-            html.H4("Currently loaded data"),
+            html.Div("Currently loaded (bundled demo)", className="card-section-label",
+                     style={"fontWeight": "700", "fontSize": "13px", "color": "var(--text-secondary)",
+                            "textTransform": "uppercase", "letterSpacing": "0.06em", "marginBottom": "12px"}),
             kpi_row([
                 ("Insurance claims", f"{len(CLAIMS):,}"),
                 ("Self-pay rows excluded", f"{CLAIMS_INFO['self_pay_excluded']:,}"),
-                ("Data as of", f"{AS_OF:%b %d, %Y}"),
+                ("Data as of", f"{AS_OF:%b %-d, %Y}"),
+                ("Denial records", f"{len(DENIALS):,}"),
             ]),
             html.Div(
-                f"{len(CLAIMS):,} insurance claims loaded from the bundled demo dataset. "
-                f"{CLAIMS_INFO['self_pay_excluded']:,} self-pay rows were excluded (not insurance claims). "
-                f"Latest denial date in the file: {AS_OF:%b %d, %Y}.",
-                className="caption",
+                f"{CLAIMS_INFO['rows_read']:,} rows read from claims_and_billing.csv "
+                f"({CLAIMS_INFO['self_pay_excluded']:,} self-pay excluded). "
+                f"Latest denial date: {AS_OF:%b %-d, %Y}.",
+                className="caption", style={"marginTop": "8px"},
             ),
         ], className="card"),
+
+        # Upload section
+        html.Div([
+            html.Div("Validate a custom dataset", style={"fontWeight": "700", "fontSize": "15px",
+                                                          "color": "var(--text-primary)", "marginBottom": "4px"}),
+            html.Div(
+                "Both files must use the exact column names from the bundled demo CSVs. "
+                "Schema errors are shown in plain English below each upload zone.",
+                className="caption", style={"marginBottom": "16px"},
+            ),
+            html.Div([
+                # Claims upload
+                html.Div([
+                    html.Div("Claims file (claims_and_billing.csv)",
+                             style={"fontWeight": "600", "fontSize": "13px",
+                                    "color": "var(--text-primary)", "marginBottom": "8px"}),
+                    _upload_zone("ds-claims-upload", "CSV with insurance claims and billing data"),
+                    html.Div(id="ds-claims-result-ui", style={"marginTop": "10px"}),
+                ], className="card", style={"flex": "1 1 0"}),
+                # Denials upload
+                html.Div([
+                    html.Div("Denials file (denials.csv)",
+                             style={"fontWeight": "600", "fontSize": "13px",
+                                    "color": "var(--text-primary)", "marginBottom": "8px"}),
+                    _upload_zone("ds-denials-upload", "CSV with denial records and appeal status"),
+                    html.Div(id="ds-denials-result-ui", style={"marginTop": "10px"}),
+                ], className="card", style={"flex": "1 1 0"}),
+            ], style={"display": "flex", "gap": "16px", "flexWrap": "wrap"}),
+
+            html.Div(
+                html.Button("Restore bundled demo data", id="ds-restore-btn",
+                            className="btn-outline", n_clicks=0),
+                style={"marginTop": "16px"},
+            ),
+        ]),
     ])
 
 
@@ -1070,6 +1255,8 @@ app.layout = html.Div([
     dcc.Store(id="sim-updates", storage_type="session", data=[]),
     dcc.Store(id="nav-page", storage_type="session", data="overview"),
     dcc.Store(id="theme-store", storage_type="local", data="light"),
+    dcc.Store(id="ds-claims-result", storage_type="session", data=None),
+    dcc.Store(id="ds-denials-result", storage_type="session", data=None),
     sidebar,
     html.Div([
         topbar,
