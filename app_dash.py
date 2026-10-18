@@ -621,6 +621,76 @@ def notify_send(_, recipients, events, hp_min, ov_limit, ck_min, sim):
     return html.Div(result.message + saved, className="cw-ok" if result.sent else "cw-warn")
 
 
+# ------------------------------------------------------------------------------ AI investigator
+def investigator_layout() -> html.Div:
+    claim_ids = sorted(QUEUE["claim_id"].dropna().unique())
+    return html.Div([
+        html.H3("AI Investigator (experimental)"),
+        html.Div([
+            html.B("Experimental"),
+            " — requires OPENAI_API_KEY. Results need human review.",
+        ], className="cw-demo"),
+        html.Div("Select a claim from the appeal queue", className="field-label"),
+        dcc.Dropdown(
+            id="inv-claim-dropdown",
+            options=[{"label": str(c), "value": str(c)} for c in claim_ids],
+            placeholder="Select a claim from the appeal queue...",
+            clearable=True,
+        ),
+        html.Div("Or type a claim ID directly", className="field-label", style={"marginTop": "8px"}),
+        dcc.Input(id="inv-claim-input", type="text", placeholder="Claim ID", debounce=True,
+                  style={"width": "100%", "padding": "8px 12px", "borderRadius": "8px",
+                         "border": "1px solid #DCE6EC", "fontSize": "14px"}),
+        html.Button("Investigate", id="inv-run-btn", className="btn", style={"marginTop": "12px"}),
+        dcc.Loading(html.Div(id="inv-result"), type="circle"),
+    ])
+
+
+@app.callback(
+    Output("inv-result", "children"),
+    Input("inv-run-btn", "n_clicks"),
+    State("inv-claim-dropdown", "value"),
+    State("inv-claim-input", "value"),
+    prevent_initial_call=True,
+)
+def run_investigation(n_clicks, dropdown_val, input_val):
+    claim_id = (dropdown_val or input_val or "").strip()
+    if not claim_id:
+        return html.Div("Please select or enter a claim ID before running.", className="cw-warn")
+    from src.agent import investigate
+    result = investigate(claim_id)
+    status = result.get("status", "error")
+    summary = result.get("summary", "")
+    if status == "unavailable":
+        return html.Div(summary, className="cw-warn")
+    if status == "error":
+        return html.Div(["Error: ", summary], className="cw-warn")
+    trace = result.get("tool_trace", [])
+    trace_items = []
+    for entry in trace:
+        tool_name = entry.get("tool", "unknown")
+        tool_result = entry.get("result", {})
+        trace_items.append(html.Div([
+            html.Div(tool_name, style={"fontWeight": "600", "marginBottom": "4px"}),
+            html.Pre(json.dumps(tool_result, indent=2, default=str),
+                     style={"fontSize": "12px", "background": "#F7FAFB", "padding": "8px",
+                            "borderRadius": "6px", "overflowX": "auto"}),
+        ], className="card", style={"marginBottom": "8px"}))
+    return html.Div([
+        html.Div(summary, className="cw-info"),
+        html.Div(
+            "Human review required — this is AI-generated analysis, not a clinical determination.",
+            className="cw-notice",
+            style={"marginTop": "8px"},
+        ),
+        html.Details([
+            html.Summary("Tool trace (expand to see evidence gathered)",
+                         style={"cursor": "pointer", "fontWeight": "600", "padding": "6px 0"}),
+            html.Div(trace_items if trace_items else html.Div("No tools were called.", className="caption")),
+        ], className="card", style={"marginTop": "12px"}),
+    ])
+
+
 # ------------------------------------------------------------------------------ method
 def method_layout() -> html.Div:
     bands = pd.DataFrame(
@@ -692,6 +762,7 @@ app.layout = html.Div([
         tab("Claim checker", "checker", checker_layout()),
         tab("Payer alerts", "payer", payer_layout()),
         tab("Notifications", "notify", notifications_layout()),
+        tab("AI Investigator", "investigator", investigator_layout()),
         tab("Method & limits", "method", method_layout()),
     ]),
 ], className="page")

@@ -282,8 +282,8 @@ st.sidebar.success(
 )
 st.sidebar.caption(f"Data as of {as_of:%b %d, %Y} (latest denial date in the file)")
 
-tab_overview, tab_appeal, tab_check, tab_payer, tab_notify, tab_method = st.tabs(
-    ["Overview", "Appeal & rework queue", "Claim checker", "Payer alerts", "Notifications", "Method & limits"]
+tab_overview, tab_appeal, tab_check, tab_payer, tab_notify, tab_investigator, tab_method = st.tabs(
+    ["Overview", "Appeal & rework queue", "Claim checker", "Payer alerts", "Notifications", "AI Investigator", "Method & limits"]
 )
 
 
@@ -705,6 +705,54 @@ def render_notifications() -> None:
     st.caption("Emails contain totals only - no patient names, patient IDs or claim IDs. A real deployment still needs privacy and compliance review.")
 
 
+# ----------------------------------------------------------------------------- AI investigator
+def render_investigator() -> None:
+    st.subheader("AI Investigator (experimental)")
+    st.markdown(
+        '<div class="cw-demo"><strong>Experimental</strong> — requires OPENAI_API_KEY. '
+        "Results need human review.</div>",
+        unsafe_allow_html=True,
+    )
+    claim_ids = sorted(queue["claim_id"].dropna().unique())
+    selected_id = st.selectbox(
+        "Select a claim from the appeal queue",
+        options=[""] + [str(c) for c in claim_ids],
+        index=0,
+        format_func=lambda x: "Select a claim..." if x == "" else x,
+    )
+    manual_id = st.text_input("Or type a claim ID directly", value="")
+    claim_id = (manual_id.strip() or selected_id or "").strip()
+
+    if st.button("Investigate", type="primary"):
+        if not claim_id:
+            st.warning("Please select or enter a claim ID before running.")
+        else:
+            with st.spinner("Investigating..."):
+                from src.agent import investigate
+                result = investigate(claim_id)
+            status = result.get("status", "error")
+            summary = result.get("summary", "")
+            if status == "unavailable":
+                st.warning(summary)
+            elif status == "error":
+                st.warning("Error: " + summary)
+            else:
+                st.info(summary)
+                st.caption(
+                    "Human review required - this is AI-generated analysis, not a clinical determination."
+                )
+                trace = result.get("tool_trace", [])
+                if trace:
+                    with st.expander("Tool trace (expand to see evidence gathered)", expanded=False):
+                        for entry in trace:
+                            tool_name = entry.get("tool", "unknown")
+                            tool_result = entry.get("result", {})
+                            st.markdown(f"**{tool_name}**")
+                            st.json(tool_result)
+                else:
+                    st.caption("No tools were called.")
+
+
 # ----------------------------------------------------------------------------- method
 def render_method() -> None:
     st.subheader("How it works, and what it does not do")
@@ -785,5 +833,7 @@ with tab_payer:
     render_payer_alerts()
 with tab_notify:
     render_notifications()
+with tab_investigator:
+    render_investigator()
 with tab_method:
     render_method()

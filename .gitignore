@@ -12,5 +12,11 @@ data/denials.csv
 *.pem
 *.key
 .env
+*.env
 dash.log
 nohup.out
+
+# Data and model artefacts
+*.db
+*.joblib
+data/*.csv
