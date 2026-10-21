@@ -1,4 +1,5 @@
 # ClaimWise AI
+Group project built with Shreya Jadav and Bhavya Nagaich
 
 ClaimWise AI is a claims review assistant for hospital billing teams, built for the IBM Z Datathon at UTD AI Biz Club. It helps a billing specialist decide which denied or flagged claims to look at first, what the likely problem is, and what steps to take next. It runs on IBM LinuxONE (s390x) as well as Mac and x86 Linux, uses no compiled ML packages, and degrades gracefully when optional services (email, OpenAI API) are not configured.
 
